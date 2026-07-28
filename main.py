@@ -1,5 +1,4 @@
 import asyncio
-import time
 import requests
 from playwright.async_api import async_playwright
 
@@ -78,24 +77,40 @@ def initialize_account_session(session, token, account_name):
   return None
 
 
-async def run_browser_session(session_token, account_name):
-  async with async_playwright() as p:
-    # تشغيل متصفح كروم بشكل مخفي ليعمل بسلاسة على سيرفرات قت هب
-    browser = await p.chromium.launch(headless=True)
-    context = await browser.new_context()
-    page = await context.new_page()
+async def run_browser_session(p, session_token, account_name):
+  browser = await p.chromium.launch(
+      headless=True,
+      args=[
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+      ],
+  )
+  context = await browser.new_context(
+      user_agent=(
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+          " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      )
+  )
+  page = await context.new_page()
 
-    # الانتقال لبيئة اللعبة مع تمرير رمز الجلسة المستخرج
-    target_url = (
-        f"https://experiences.wolfservices.production.wolf.live/?token={session_token}"
-    )
-    print(f"[*] ({account_name}) فتح نافذة المتصفح والانتقال للعبة...")
-    await page.goto(target_url)
+  # مراقبة أخطاء المتصفح للتشخيص
+  page.on("console", lambda msg: print(f"[متصفح {account_name}]: {msg.text}"))
 
-    # بقاء نافذة المتصفح نشطة مدة اللعب (121 ثانية)
-    await asyncio.sleep(121)
-    await browser.close()
-    print(f"[*] ({account_name}) تم إغلاق المتصفح وجلسة اللعب.")
+  target_url = (
+      f"https://experiences.wolfservices.production.wolf.live/?token={session_token}"
+  )
+  print(f"[*] ({account_name}) فتح نافذة المتصفح المستقلة والاتصال باللعبة...")
+  try:
+    await page.goto(target_url, timeout=60000, wait_until="domcontentloaded")
+  except Exception as e:
+    print(f"[-] ({account_name}) ملاحظة أثناء تحميل الصفحة: {e}")
+
+  # الحفاظ على الجلسة مفتوحة وثابتة طوال مدة اللعب المطلوبة
+  await asyncio.sleep(125)
+  await browser.close()
+  print(f"[*] ({account_name}) تم إغلاق المتصفح بنجاح.")
 
 
 async def main_async():
@@ -130,7 +145,7 @@ async def main_async():
     print("[-] تعذر إنشاء اللوبي.")
     return
   print(f"[*] تم إنشاء اللوبي بنجاح برقم: {lobby_id}")
-  time.sleep(1)
+  await asyncio.sleep(1)
 
   session_2 = requests.Session()
   headers_2 = base_headers.copy()
@@ -151,7 +166,7 @@ async def main_async():
     )
     if check_lobby.status_code == 200:
       break
-    time.sleep(1)
+    await asyncio.sleep(1)
 
   join_res = session_2.post(
       f"https://experience.palringo.com/lobby/id/{lobby_id}/user",
@@ -161,7 +176,7 @@ async def main_async():
     print("[-] فشل انضمام الحساب الثاني.")
     return
   print("[*] انضم الحساب الثاني بنجاح للوبي!")
-  time.sleep(2)
+  await asyncio.sleep(2)
 
   close_headers = headers_1.copy()
   close_headers["content-length"] = "0"
@@ -171,18 +186,18 @@ async def main_async():
   )
 
   print("[*] تشغيل نوافذ المتصفح المتوازية للحسابين عبر Playwright...")
-  await asyncio.gather(
-      run_browser_session(session_token_1, "الحساب الأول"),
-      run_browser_session(session_token_2, "الحساب الثاني"),
-  )
+  async with async_playwright() as p:
+    await asyncio.gather(
+        run_browser_session(p, session_token_1, "الحساب الأول"),
+        run_browser_session(p, session_token_2, "الحساب الثاني"),
+    )
 
   session_1.post(
       f"https://experience.palringo.com/lobby/id/{lobby_id}/close",
       headers=close_headers,
   )
-  print("[*] تمت العملية بنجاح وإغلاق الجلسة.")
+  print("[*] تمت العملية بنجاح وإغلاق الجلسة بالكامل.")
 
 
 if __name__ == "__main__":
   asyncio.run(main_async())
-
