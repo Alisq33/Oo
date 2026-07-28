@@ -23,8 +23,9 @@ base_headers = {
     "experience-build-version": "2.11.0",
     "language-id": "1",
     "user-agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv)"
+        " AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0"
+        " Chrome/150.0.7871.124 Mobile Safari/537.36"
     ),
     "content-type": "application/json",
     "Accept": "*/*",
@@ -45,7 +46,7 @@ def initialize_account_session(session, token, account_name):
           "experienceId": 5,
           "experienceBuildType": "release",
           "experienceBuildVersion": "2.11.0",
-          "platform": "web",
+          "platform": "android",  # استخدام أندرويد لتوافق تام مع الـ Token
           "contextType": "group",
           "contextId": GROUP_ID,
           "screenState": "partial",
@@ -63,7 +64,7 @@ def initialize_account_session(session, token, account_name):
               "experienceId": 5,
               "experienceBuildType": "release",
               "experienceBuildVersion": "2.11.0",
-              "platform": "web",
+              "platform": "android",
               "contextType": "group",
               "contextId": GROUP_ID,
               "screenState": "partial",
@@ -87,27 +88,32 @@ async def run_browser_session(p, session_token, account_name):
           "--disable-gpu",
       ],
   )
+
+  # محاكاة هاتف محمول حقيقي (Mobile emulation) ليتطابق مع الـ WebView والـ Token
   context = await browser.new_context(
       user_agent=(
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-      )
+          "Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv)"
+          " AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0"
+          " Chrome/150.0.7871.124 Mobile Safari/537.36"
+      ),
+      viewport={"width": 393, "height": 851},
+      device_scale_factor=2.75,
+      is_mobile=True,
+      has_touch=True,
   )
-  page = await context.new_page()
 
-  # مراقبة أخطاء المتصفح للتشخيص
-  page.on("console", lambda msg: print(f"[متصفح {account_name}]: {msg.text}"))
+  page = await context.new_page()
 
   target_url = (
       f"https://experiences.wolfservices.production.wolf.live/?token={session_token}"
   )
-  print(f"[*] ({account_name}) فتح نافذة المتصفح المستقلة والاتصال باللعبة...")
+  print(f"[*] ({account_name}) فتح بيئة المتصفح المحاكية والاتصال باللعبة...")
   try:
-    await page.goto(target_url, timeout=60000, wait_until="domcontentloaded")
+    await page.goto(target_url, timeout=60000, wait_until="networkidle")
   except Exception as e:
-    print(f"[-] ({account_name}) ملاحظة أثناء تحميل الصفحة: {e}")
+    print(f"[-] ({account_name}) ملاحظة أثناء التحميل: {e}")
 
-  # الحفاظ على الجلسة مفتوحة وثابتة طوال مدة اللعب المطلوبة
+  # الحفاظ على الجلسة مفتوحة طوال المدة المطلوبة دون انقطاع
   await asyncio.sleep(125)
   await browser.close()
   print(f"[*] ({account_name}) تم إغلاق المتصفح بنجاح.")
@@ -185,7 +191,9 @@ async def main_async():
       headers=close_headers,
   )
 
-  print("[*] تشغيل نوافذ المتصفح المتوازية للحسابين عبر Playwright...")
+  print(
+      "[*] تشغيل بيئات الهواتف المحاكية المتوازية للحسابين عبر Playwright..."
+  )
   async with async_playwright() as p:
     await asyncio.gather(
         run_browser_session(p, session_token_1, "الحساب الأول"),
