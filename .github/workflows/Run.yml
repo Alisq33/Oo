@@ -1,0 +1,42 @@
+name: Run Bot
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */4 * * *'  # كل 4 ساعات
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300  # 5 ساعات
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Cache Chrome profile
+        uses: actions/cache@v3
+        with:
+          path: |
+            chrome-profile-account1
+            chrome-profile-account2
+          key: ${{ runner.os }}-chrome-profile-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-chrome-profile-
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run bot
+        env:
+          TOKEN_1: ${{ secrets.TOKEN_1 }}
+          TOKEN_2: ${{ secrets.TOKEN_2 }}
+          USER_ID_1: ${{ secrets.USER_ID_1 }}
+          USER_ID_2: ${{ secrets.USER_ID_2 }}
+          GROUP_ID: ${{ secrets.GROUP_ID }}
+        run: node bot.js
