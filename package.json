@@ -1,10 +1,10 @@
 {
-  "name": "wolf-bot",
+  "name": "bot",
   "version": "1.0.0",
-  "description": "Puppeteer bot for wolf/palringo",
-  "main": "index.js",
+  "description": "LONOO bot for GitHub Actions",
+  "main": "bot.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node bot.js"
   },
   "dependencies": {
     "puppeteer": "^22.0.0"
