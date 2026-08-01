@@ -19,6 +19,10 @@ const WAIT_TIME = 180;              // 3 دقائق
 const MAX_ATTEMPTS = 5;
 const RETRY_DELAY = 180;            // 3 دقائق عند حدوث خطأ
 
+// ===== إحداثيات النقر للحساب الثاني (من تجربتك) =====
+const CLICK_X = 508;
+const CLICK_Y = 361;
+
 const USER_DATA_DIR_1 = path.join(__dirname, 'chrome-profile-account1');
 const USER_DATA_DIR_2 = path.join(__dirname, 'chrome-profile-account2');
 
@@ -243,6 +247,20 @@ async function closeWindows(page1, page2) {
     console.log(`✅ تم إغلاق النوافذ.`);
 }
 
+// ===== النقر التلقائي للحساب الثاني (كل 5 ثوانٍ) =====
+function startAutoClick(page, accountName) {
+    console.log(`[${accountName}] 🖱️ بدء النقر التلقائي على (${CLICK_X}, ${CLICK_Y}) كل 5 ثوانٍ...`);
+    const interval = setInterval(async () => {
+        try {
+            await page.mouse.click(CLICK_X, CLICK_Y);
+            console.log(`[${accountName}] ✅ تم النقر على (${CLICK_X}, ${CLICK_Y})`);
+        } catch (e) {
+            console.log(`[${accountName}] ❌ فشل النقر:`, e.message);
+        }
+    }, 5000); // كل 5 ثوانٍ
+    return interval;
+}
+
 // ===== تشغيل جولة واحدة =====
 async function runRound(roundNumber, browser1, browser2) {
     console.log(`\n🔄 === جولة ${roundNumber} ===`);
@@ -313,8 +331,15 @@ async function runRound(roundNumber, browser1, browser2) {
             injectData(page2, TOKEN_2, USER_ID_2, "الحساب الثاني", lobbyId)
         ]);
 
+        // ===== تفعيل النقر التلقائي للحساب الثاني (كل 5 ثوانٍ) =====
+        const autoClickInterval = startAutoClick(page2, "الحساب الثاني");
+
         console.log(`⏳ انتظار ${WAIT_TIME} ثانية (${WAIT_TIME/60} دقيقة)...`);
         await sleep(WAIT_TIME * 1000);
+
+        // إيقاف النقر التلقائي قبل الإغلاق
+        clearInterval(autoClickInterval);
+        console.log(`[الحساب الثاني] 🛑 تم إيقاف النقر التلقائي.`);
 
         await closeWindows(page1, page2);
 
@@ -345,16 +370,16 @@ async function main() {
     const session2 = await initializeAccountSession(TOKEN_2, "الحساب الثاني");
     if (!session2) { console.error('❌ فشل جلسة الحساب الثاني'); return; }
 
-    console.log("🚀 فتح المتصفحين (ثابتان طوال الجلسة)...");
+    console.log("🚀 فتح المتصفحين (ثابتان طوال الجلسة) بحجم 600x600...");
     const browser1 = await puppeteer.launch({
         headless: true,
         userDataDir: USER_DATA_DIR_1,
-        args: ['--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox', '--window-size=800,600']
+        args: ['--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox', '--window-size=600,600']
     });
     const browser2 = await puppeteer.launch({
         headless: true,
         userDataDir: USER_DATA_DIR_2,
-        args: ['--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox', '--window-size=800,600']
+        args: ['--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox', '--window-size=600,600']
     });
 
     let round = 1;
