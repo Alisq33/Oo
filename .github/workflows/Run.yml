@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: '0 */4 * * *'  # كل 4 ساعات
 
+concurrency:
+  group: run-bot-group
+  cancel-in-progress: true
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
