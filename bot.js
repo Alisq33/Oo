@@ -15,18 +15,17 @@ if (!TOKEN_1 || !TOKEN_2) {
 }
 
 // ===== إعدادات الجولات =====
-const WAIT_TIME = 130;              // 2 دقيقة و10 ثواني (تم التعديل)
-const MAX_ATTEMPTS = 10;            // تم التعديل من 5 إلى 10
-const RETRY_DELAY = 180;            // 3 دقائق عند حدوث خطأ
+const WAIT_TIME = 130;
+const MAX_ATTEMPTS = 10;
+const RETRY_DELAY = 180;
 
-// ===== إحداثيات النقر للحساب الثاني (من تجربتك) =====
+// ===== إحداثيات النقر للحساب الثاني =====
 const CLICK_X = 508;
 const CLICK_Y = 361;
 
 const USER_DATA_DIR_1 = path.join(__dirname, 'chrome-profile-account1');
 const USER_DATA_DIR_2 = path.join(__dirname, 'chrome-profile-account2');
 
-// ===== رؤوس HTTP =====
 const baseHeaders = {
     "Host": "experience.palringo.com",
     "Connection": "keep-alive",
@@ -45,6 +44,13 @@ const baseHeaders = {
 };
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+process.on('unhandledRejection', (err) => {
+    console.error('❌ Unhandled Rejection:', err && err.stack ? err.stack : err);
+});
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err && err.stack ? err.stack : err);
+});
 
 // ===== دوال الجلسات واللوبي =====
 async function initializeAccountSession(token, accountName) {
@@ -88,9 +94,11 @@ async function initializeAccountSession(token, accountName) {
                 console.log(`[${accountName}] ✅ تم تفعيل الجلسة`);
                 return sessionToken;
             }
+        } else {
+            console.error(`[${accountName}] ❌ فشل إنشاء الجلسة، status: ${res.status}`);
         }
     } catch (e) {
-        console.error(`[${accountName}] خطأ:`, e.message);
+        console.error(`[${accountName}] خطأ:`, e.stack || e.message);
     }
     return null;
 }
@@ -239,7 +247,7 @@ async function navigateToLobby(page, token, accountName, lobbyId) {
     console.log(`[${accountName}] ✅ تم تحميل الصفحة.`);
 }
 
-// ===== إغلاق النوافذ (بدون خروج) =====
+// ===== إغلاق النوافذ =====
 async function closeWindows(page1, page2) {
     console.log(`🔄 إغلاق النوافذ الحالية...`);
     try { await page1.close(); } catch(e) {}
@@ -247,7 +255,7 @@ async function closeWindows(page1, page2) {
     console.log(`✅ تم إغلاق النوافذ.`);
 }
 
-// ===== النقر التلقائي للحساب الثاني (كل 5 ثوانٍ) =====
+// ===== النقر التلقائي للحساب الثاني =====
 function startAutoClick(page, accountName) {
     console.log(`[${accountName}] 🖱️ بدء النقر التلقائي على (${CLICK_X}, ${CLICK_Y}) كل 5 ثوانٍ...`);
     const interval = setInterval(async () => {
@@ -257,7 +265,7 @@ function startAutoClick(page, accountName) {
         } catch (e) {
             console.log(`[${accountName}] ❌ فشل النقر:`, e.message);
         }
-    }, 5000); // كل 5 ثوانٍ
+    }, 5000);
     return interval;
 }
 
@@ -271,7 +279,7 @@ async function runRound(roundNumber, browser1, browser2) {
     while (attempt < MAX_ATTEMPTS) {
         attempt++;
         console.log(`[API] 🏗️ محاولة إنشاء لوبي رقم ${attempt}...`);
-        
+
         try {
             lobbyId = await createLobby(TOKEN_1);
             console.log(`✅ تم إنشاء اللوبي: ${lobbyId}`);
@@ -299,7 +307,7 @@ async function runRound(roundNumber, browser1, browser2) {
                 lobbyId = null;
             }
         } catch (error) {
-            console.error(`❌ خطأ في محاولة إنشاء اللوبي:`, error.message);
+            console.error(`❌ خطأ في محاولة إنشاء اللوبي:`, error.stack || error.message);
             if (lobbyId) await closeLobby(TOKEN_1, lobbyId);
             await sleep(5000);
         }
@@ -331,13 +339,11 @@ async function runRound(roundNumber, browser1, browser2) {
             injectData(page2, TOKEN_2, USER_ID_2, "الحساب الثاني", lobbyId)
         ]);
 
-        // ===== تفعيل النقر التلقائي للحساب الثاني (كل 5 ثوانٍ) =====
         const autoClickInterval = startAutoClick(page2, "الحساب الثاني");
 
         console.log(`⏳ انتظار ${WAIT_TIME} ثانية (${WAIT_TIME/60} دقيقة)...`);
         await sleep(WAIT_TIME * 1000);
 
-        // إيقاف النقر التلقائي قبل الإغلاق
         clearInterval(autoClickInterval);
         console.log(`[الحساب الثاني] 🛑 تم إيقاف النقر التلقائي.`);
 
@@ -355,7 +361,7 @@ async function runRound(roundNumber, browser1, browser2) {
 
         return true;
     } catch (error) {
-        console.error(`❌ خطأ في الجولة ${roundNumber}:`, error.message);
+        console.error(`❌ خطأ في الجولة ${roundNumber}:`, error.stack || error.message);
         return false;
     }
 }
@@ -363,24 +369,46 @@ async function runRound(roundNumber, browser1, browser2) {
 // ===================== MAIN =====================
 async function main() {
     console.log(`🚀 بدء البوت (مدة الانتظار: ${WAIT_TIME} ثانية)`);
-    
-    // جلسات الحسابين (مرة واحدة)
-    const session1 = await initializeAccountSession(TOKEN_1, "الحساب الأول");
-    if (!session1) { console.error('❌ فشل جلسة الحساب الأول'); return; }
-    const session2 = await initializeAccountSession(TOKEN_2, "الحساب الثاني");
-    if (!session2) { console.error('❌ فشل جلسة الحساب الثاني'); return; }
 
-    console.log("🚀 فتح المتصفحين (ثابتان طوال الجلسة) بحجم 600x600...");
-    const browser1 = await puppeteer.launch({
-        headless: true,
-        userDataDir: USER_DATA_DIR_1,
-        args: ['--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox', '--window-size=600,600']
-    });
-    const browser2 = await puppeteer.launch({
-        headless: true,
-        userDataDir: USER_DATA_DIR_2,
-        args: ['--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox', '--window-size=600,600']
-    });
+    let browser1, browser2;
+
+    // ===== حلقة إعادة محاولة للتهيئة (جلسات + متصفحات) =====
+    while (true) {
+        try {
+            const session1 = await initializeAccountSession(TOKEN_1, "الحساب الأول");
+            if (!session1) {
+                console.error('❌ فشل جلسة الحساب الأول، إعادة المحاولة بعد 60 ثانية');
+                await sleep(60000);
+                continue;
+            }
+            const session2 = await initializeAccountSession(TOKEN_2, "الحساب الثاني");
+            if (!session2) {
+                console.error('❌ فشل جلسة الحساب الثاني، إعادة المحاولة بعد 60 ثانية');
+                await sleep(60000);
+                continue;
+            }
+
+            console.log("🚀 فتح المتصفحين (ثابتان طوال الجلسة) بحجم 600x600...");
+            browser1 = await puppeteer.launch({
+                headless: true,
+                userDataDir: USER_DATA_DIR_1,
+                args: ['--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox', '--window-size=600,600']
+            });
+            browser2 = await puppeteer.launch({
+                headless: true,
+                userDataDir: USER_DATA_DIR_2,
+                args: ['--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox', '--window-size=600,600']
+            });
+
+            break;
+        } catch (initError) {
+            console.error('❌ خطأ فادح أثناء التهيئة:', initError.stack || initError.message);
+            try { if (browser1) await browser1.close(); } catch (e) {}
+            try { if (browser2) await browser2.close(); } catch (e) {}
+            console.log('⏳ انتظار 60 ثانية ثم إعادة محاولة التهيئة...');
+            await sleep(60000);
+        }
+    }
 
     let round = 1;
     while (true) {
@@ -392,12 +420,13 @@ async function main() {
             }
             round++;
         } catch (error) {
-            console.error(`❌ خطأ غير متوقع:`, error.message);
+            console.error(`❌ خطأ غير متوقع:`, error.stack || error.message);
             console.log(`⏳ انتظار ${RETRY_DELAY} ثانية ثم المحاولة مرة أخرى...`);
             await sleep(RETRY_DELAY * 1000);
         }
     }
 }
 
-// تشغيل البوت
-main().catch(console.error);
+main().catch((err) => {
+    console.error('❌ خطأ فادح في main():', err.stack || err.message);
+});
