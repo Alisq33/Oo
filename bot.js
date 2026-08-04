@@ -16,7 +16,7 @@ if (!TOKEN_1 || !TOKEN_2) {
 
 // ===== إعدادات الجولات =====
 const WAIT_TIME = 130;
-const MAX_ATTEMPTS = 10;
+const MAX_ATTEMPTS = 20;  // تم التعديل من 10 إلى 20
 const RETRY_DELAY = 180;
 
 // ===== إحداثيات النقر للحساب الثاني =====
