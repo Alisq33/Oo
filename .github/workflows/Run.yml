@@ -1,26 +1,27 @@
-name: Run Bot
+name: Continuous Bot Runner
+
 on:
-  workflow_dispatch:
   schedule:
-    - cron: '0 */4 * * *'  # كل 4 ساعات
+    - cron: '0 */4 * * *'   # كل 4 ساعات (بتوقيت UTC، أي ما يعادل كل 4 ساعات بتوقيت مكة أيضاً)
+  workflow_dispatch:
 
 concurrency:
-  group: run-bot-group
-  cancel-in-progress: true
+  group: wolf-bot-running
+  cancel-in-progress: true 
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 300  # 5 ساعات
-
+    timeout-minutes: 305 
+    
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: Cache Chrome profile
         uses: actions/cache@v3
@@ -38,11 +39,22 @@ jobs:
       - name: Install Chrome for Puppeteer
         run: npx puppeteer browsers install chrome
 
-      - name: Run bot
+      - name: Execution Logic
         env:
           TOKEN_1: ${{ secrets.TOKEN_1 }}
           TOKEN_2: ${{ secrets.TOKEN_2 }}
           USER_ID_1: ${{ secrets.USER_ID_1 }}
           USER_ID_2: ${{ secrets.USER_ID_2 }}
           GROUP_ID: ${{ secrets.GROUP_ID }}
-        run: node bot.js
+        run: |
+          echo "🚀 بدء التشغيل لمدة 5 ساعات (18000 ثانية)..."
+          
+          # تشغيل البوت في الخلفية
+          node bot.js & 
+          BOT_PID=$!
+          
+          # الانتظار لمدة 5 ساعات (18000 ثانية)
+          sleep 18000 
+          
+          echo "🛑 انتهت الـ 5 ساعات، جاري إغلاق الجلسة للسماح بالتشغيل الجديد..."
+          kill $BOT_PID || true
