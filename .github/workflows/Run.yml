@@ -2,17 +2,17 @@ name: Continuous Bot Runner
 
 on:
   schedule:
-    - cron: '0 */4 * * *'   # كل 4 ساعات (بتوقيت UTC، أي ما يعادل كل 4 ساعات بتوقيت مكة أيضاً)
+    - cron: '0 21,1,5,9,13,17 * * *'   # بتوقيت مكة: 12 ص, 4 ص, 8 ص, 12 م, 4 م, 8 م
   workflow_dispatch:
 
 concurrency:
   group: wolf-bot-running
-  cancel-in-progress: true 
+  cancel-in-progress: true
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 305 
+    timeout-minutes: 365        # تم التعديل من 305 إلى 365 لدعم 6 ساعات
     
     steps:
       - name: Checkout Code
@@ -47,14 +47,14 @@ jobs:
           USER_ID_2: ${{ secrets.USER_ID_2 }}
           GROUP_ID: ${{ secrets.GROUP_ID }}
         run: |
-          echo "🚀 بدء التشغيل لمدة 5 ساعات (18000 ثانية)..."
+          echo "🚀 بدء التشغيل لمدة 6 ساعات (21600 ثانية)..."
           
           # تشغيل البوت في الخلفية
           node bot.js & 
           BOT_PID=$!
           
-          # الانتظار لمدة 5 ساعات (18000 ثانية)
-          sleep 18000 
+          # الانتظار لمدة 6 ساعات (21600 ثانية)
+          sleep 21600 
           
-          echo "🛑 انتهت الـ 5 ساعات، جاري إغلاق الجلسة للسماح بالتشغيل الجديد..."
+          echo "🛑 انتهت الـ 6 ساعات، جاري إغلاق الجلسة للسماح بالتشغيل الجديد..."
           kill $BOT_PID || true
