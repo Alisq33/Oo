@@ -21,12 +21,12 @@ const WAIT_TIME = 130;
 const MAX_ATTEMPTS = 20;
 const RETRY_DELAY = 180;
 
-// ===== إعدادات السحب =====
+// ===== إعدادات السحب (للحساب الثاني) =====
 const DRAG_START = { x: 300, y: 338 };
 const DRAG_END = { x: 264, y: 470 };
-const DRAG_INTERVAL = 3000; // 3 ثوانٍ
+const DRAG_INTERVAL = 3000; // 3 ثوانٍ بين كل سحب
 
-// ===== رؤوس HTTP (Golden Goal) =====
+// ===== رؤوس HTTP (معدلة للعبة Golden Goal) =====
 const baseHeaders = {
     "Host": "experience.palringo.com",
     "Connection": "keep-alive",
@@ -53,7 +53,7 @@ process.on('uncaughtException', (err) => {
     console.error('❌ Uncaught Exception:', err && err.stack ? err.stack : err);
 });
 
-// ===== دوال الجلسات واللوبي =====
+// ===== دوال الجلسات واللوبي (معدلة) =====
 async function initializeAccountSession(token, accountName) {
     console.log(`[${accountName}] جاري إنشاء الجلسة...`);
     const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
@@ -158,7 +158,7 @@ async function getLobbyUsers(token, lobbyId) {
     return [];
 }
 
-// ===== حقن البيانات =====
+// ===== حقن بيانات المستخدم =====
 async function injectData(page, token, userId, accountName, lobbyId) {
     await page.evaluate((token, userId, groupId, lobbyId, accountName) => {
         window.Gamepad = {
@@ -233,7 +233,7 @@ async function injectData(page, token, userId, accountName, lobbyId) {
     console.log(`[${accountName}] ✅ تم حقن البيانات.`);
 }
 
-// ===== توجيه الصفحة =====
+// ===== توجيه الصفحة إلى لوبي (Golden Goal) =====
 async function navigateToLobby(page, token, accountName, lobbyId) {
     await page.setUserAgent('Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/150.0.7871.124 Mobile Safari/537.36');
     await page.setExtraHTTPHeaders({
@@ -256,85 +256,29 @@ async function closeWindows(page1, page2) {
     console.log(`✅ تم إغلاق النوافذ.`);
 }
 
-// ===== دالة السحب المحسّنة (ماوس + لمس) =====
+// ===== دالة السحب =====
 async function performDrag(page, accountName) {
     try {
-        // التأكد من أن الصفحة جاهزة
-        await page.waitForFunction(() => document.readyState === 'complete', { timeout: 5000 });
-
-        // الحصول على حجم النافذة
-        const viewport = await page.viewport();
-        console.log(`[${accountName}] 📐 حجم النافذة: ${viewport.width}x${viewport.height}`);
-
-        // التأكد من الإحداثيات ضمن النطاق
-        const startX = Math.min(DRAG_START.x, viewport.width - 10);
-        const startY = Math.min(DRAG_START.y, viewport.height - 10);
-        const endX = Math.min(DRAG_END.x, viewport.width - 10);
-        const endY = Math.min(DRAG_END.y, viewport.height - 10);
-
-        console.log(`[${accountName}] 🖱️ محاولة السحب من (${startX},${startY}) إلى (${endX},${endY})`);
-
-        // طريقة 1: استخدام الماوس (محاكاة pointer events)
-        await page.mouse.move(startX, startY);
+        console.log(`[${accountName}] 🖱️ السحب من (${DRAG_START.x},${DRAG_START.y}) إلى (${DRAG_END.x},${DRAG_END.y})`);
+        await page.mouse.move(DRAG_START.x, DRAG_START.y);
         await sleep(200);
         await page.mouse.down();
         await sleep(300);
-
-        // سحب بخطوات متعددة (محاكاة طبيعية)
-        const steps = 25;
-        for (let i = 1; i <= steps; i++) {
-            const progress = i / steps;
-            // منحنى تسارع بسيط لجعل الحركة طبيعية
-            const eased = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-            const currentX = startX + (endX - startX) * eased;
-            const currentY = startY + (endY - startY) * eased;
-            await page.mouse.move(currentX, currentY);
-            await sleep(20);
-        }
-
+        await page.mouse.move(DRAG_END.x, DRAG_END.y, { steps: 15 });
+        await sleep(300);
         await page.mouse.up();
-        await sleep(300);
-        console.log(`[${accountName}] ✅ تم السحب باستخدام الماوس.`);
-
-        // طريقة 2: استخدام اللمس (إذا فشل الماوس، جرب اللمس)
-        // بعض الألعاب تستمع لأحداث اللمس فقط
-        console.log(`[${accountName}] 📱 محاولة السحب باستخدام اللمس أيضاً...`);
-        await page.touchscreen.touchStart(startX, startY);
-        await sleep(300);
-        for (let i = 1; i <= steps; i++) {
-            const progress = i / steps;
-            const eased = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-            const currentX = startX + (endX - startX) * eased;
-            const currentY = startY + (endY - startY) * eased;
-            await page.touchscreen.touchMove(currentX, currentY);
-            await sleep(20);
-        }
-        await page.touchscreen.touchEnd();
-        console.log(`[${accountName}] ✅ تم السحب باستخدام اللمس.`);
-
-        return true;
+        console.log(`[${accountName}] ✅ تم السحب.`);
     } catch (e) {
         console.error(`[${accountName}] ❌ فشل السحب:`, e.message);
-        return false;
     }
 }
 
+// ===== بدء السحب التلقائي المتكرر =====
 function startAutoDrag(page, accountName) {
     console.log(`[${accountName}] 🖱️ بدء السحب التلقائي كل ${DRAG_INTERVAL/1000} ثانية...`);
-    let isDragging = false;
-
     const interval = setInterval(async () => {
-        if (isDragging) return;
-        isDragging = true;
-        try {
-            await performDrag(page, accountName);
-        } catch (e) {
-            console.error(`[${accountName}] خطأ في حلقة السحب:`, e.message);
-        } finally {
-            isDragging = false;
-        }
+        await performDrag(page, accountName);
     }, DRAG_INTERVAL);
-
     return interval;
 }
 
@@ -448,11 +392,18 @@ async function main() {
     const userDataDir1 = path.join(tempDir, 'account1');
     const userDataDir2 = path.join(tempDir, 'account2');
 
-    await fs.mkdir(userDataDir1, { recursive: true });
-    await fs.mkdir(userDataDir2, { recursive: true });
+    // إنشاء المجلدات المؤقتة
+    try {
+        await fs.mkdir(userDataDir1, { recursive: true });
+        await fs.mkdir(userDataDir2, { recursive: true });
+    } catch (err) {
+        console.error('❌ فشل إنشاء المجلدات المؤقتة:', err);
+        process.exit(1);
+    }
 
     let browser1, browser2;
 
+    // ===== حلقة إعادة محاولة للتهيئة (جلسات + متصفحات) =====
     while (true) {
         try {
             const session1 = await initializeAccountSession(TOKEN_1, "الحساب الأول");
@@ -501,12 +452,14 @@ async function main() {
             console.error('❌ خطأ فادح أثناء التهيئة:', initError.stack || initError.message);
             try { if (browser1) await browser1.close(); } catch (e) {}
             try { if (browser2) await browser2.close(); } catch (e) {}
+            // حذف المجلدات المؤقتة وإعادة المحاولة
             try { await fs.rm(tempDir, { recursive: true, force: true }); } catch (e) {}
             console.log('⏳ انتظار 60 ثانية ثم إعادة محاولة التهيئة...');
             await sleep(60000);
         }
     }
 
+    // جدولة تنظيف المجلدات عند الخروج
     const cleanup = async () => {
         console.log('🧹 تنظيف الملفات المؤقتة...');
         try { await fs.rm(tempDir, { recursive: true, force: true }); } catch (e) {}
@@ -523,9 +476,10 @@ async function main() {
 
     let round = 1;
     const startTime = Date.now();
-    const maxRunTime = 21600 * 1000;
+    const maxRunTime = 21600 * 1000; // 6 ساعات
 
     while (true) {
+        // التحقق من الوقت المنقضي
         if (Date.now() - startTime > maxRunTime) {
             console.log('⏰ انتهت مدة التشغيل (6 ساعات). إنهاء البوت.');
             break;
@@ -545,6 +499,7 @@ async function main() {
         }
     }
 
+    // إغلاق المتصفحات وتنظيف الملفات
     try { if (browser1) await browser1.close(); } catch (e) {}
     try { if (browser2) await browser2.close(); } catch (e) {}
     await cleanup();
@@ -553,6 +508,7 @@ async function main() {
 
 main().catch(async (err) => {
     console.error('❌ خطأ فادح في main():', err.stack || err.message);
+    // تنظيف عام للمجلدات المؤقتة
     try {
         const dirs = await fs.readdir(os.tmpdir());
         for (const d of dirs) {
