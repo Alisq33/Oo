@@ -16,25 +16,28 @@ if (!TOKEN_1 || !TOKEN_2) {
 
 // ===== إعدادات الجولات =====
 const WAIT_TIME = 130;
-const MAX_ATTEMPTS = 20;  // تم التعديل من 10 إلى 20
+const MAX_ATTEMPTS = 20;
 const RETRY_DELAY = 180;
 
-// ===== إحداثيات النقر للحساب الثاني =====
-const CLICK_X = 508;
-const CLICK_Y = 361;
+// ===== إعدادات السحب (للحساب الثاني) =====
+const DRAG_START = { x: 300, y: 338 };
+const DRAG_END = { x: 264, y: 470 };
+const DRAG_INTERVAL = 3000; // 3 ثوانٍ بين كل سحب
 
+// ===== مسارات حفظ بيانات المتصفح =====
 const USER_DATA_DIR_1 = path.join(__dirname, 'chrome-profile-account1');
 const USER_DATA_DIR_2 = path.join(__dirname, 'chrome-profile-account2');
 
+// ===== رؤوس HTTP (معدلة للعبة Golden Goal) =====
 const baseHeaders = {
     "Host": "experience.palringo.com",
     "Connection": "keep-alive",
-    "experience-id": "5",
+    "experience-id": "9",                         // تم التغيير من 5 إلى 9
     "experience-build-type": "release",
     "sec-ch-ua-platform": '"Android"',
     "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Android WebView";v="150"',
     "sec-ch-ua-mobile": "?1",
-    "experience-build-version": "2.11.0",
+    "experience-build-version": "1.3.14",        // تم التغيير من 2.11.0 إلى 1.3.14
     "language-id": "1",
     "user-agent": "Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/150.0.7871.124 Mobile Safari/537.36",
     "content-type": "application/json",
@@ -52,7 +55,7 @@ process.on('uncaughtException', (err) => {
     console.error('❌ Uncaught Exception:', err && err.stack ? err.stack : err);
 });
 
-// ===== دوال الجلسات واللوبي =====
+// ===== دوال الجلسات واللوبي (معدلة) =====
 async function initializeAccountSession(token, accountName) {
     console.log(`[${accountName}] جاري إنشاء الجلسة...`);
     const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
@@ -61,9 +64,9 @@ async function initializeAccountSession(token, accountName) {
             method: "POST",
             headers,
             body: JSON.stringify({
-                experienceId: 5,
+                experienceId: 9,                  // تم التغيير
                 experienceBuildType: "release",
-                experienceBuildVersion: "2.11.0",
+                experienceBuildVersion: "1.3.14", // تم التغيير
                 platform: "android",
                 contextType: "group",
                 contextId: GROUP_ID,
@@ -80,9 +83,9 @@ async function initializeAccountSession(token, accountName) {
                     method: "PUT",
                     headers,
                     body: JSON.stringify({
-                        experienceId: 5,
+                        experienceId: 9,
                         experienceBuildType: "release",
-                        experienceBuildVersion: "2.11.0",
+                        experienceBuildVersion: "1.3.14",
                         platform: "android",
                         contextType: "group",
                         contextId: GROUP_ID,
@@ -109,14 +112,14 @@ async function createLobby(token) {
         method: "POST",
         headers,
         body: JSON.stringify({
-            typeId: 4,
+            typeId: 13,                           // تم التغيير من 4 إلى 13
             groupId: GROUP_ID,
             visibility: "global",
             access: "public",
-            displayName: "ㅤ🐈⬛ ㅤ",
+            displayName: "ㅤ⚽ Penalty Shootout ㅤ",
             data: "",
             ownerUserData: "",
-            ownerPlayerIp: "188.52.62.51"
+            ownerPlayerIp: "2001:16a2:3006:9b00:a1a3:23e2:1385:b71b"
         })
     });
     const data = await res.json();
@@ -128,7 +131,7 @@ async function joinLobby(token, lobbyId) {
     const res = await fetch(`https://experience.palringo.com/lobby/id/${lobbyId}/user`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ data: "", playerIp: "2001:16a2:32c0:b300:50f:fbd0:fd5a:d326" })
+        body: JSON.stringify({ data: "", playerIp: "2001:16a2:3006:9b00:a1a3:23e2:1385:b71b" })
     });
     return res.status === 200;
 }
@@ -157,7 +160,7 @@ async function getLobbyUsers(token, lobbyId) {
     return [];
 }
 
-// ===== حقن بيانات المستخدم =====
+// ===== حقن بيانات المستخدم (نفس الكود، لا حاجة لتعديل) =====
 async function injectData(page, token, userId, accountName, lobbyId) {
     await page.evaluate((token, userId, groupId, lobbyId, accountName) => {
         window.Gamepad = {
@@ -232,7 +235,7 @@ async function injectData(page, token, userId, accountName, lobbyId) {
     console.log(`[${accountName}] ✅ تم حقن البيانات.`);
 }
 
-// ===== توجيه الصفحة إلى لوبي =====
+// ===== توجيه الصفحة إلى لوبي (Golden Goal) =====
 async function navigateToLobby(page, token, accountName, lobbyId) {
     await page.setUserAgent('Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/150.0.7871.124 Mobile Safari/537.36');
     await page.setExtraHTTPHeaders({
@@ -240,7 +243,7 @@ async function navigateToLobby(page, token, accountName, lobbyId) {
         'Origin': 'https://experiences.wolfservices.production.wolf.live',
         'X-Requested-With': 'com.palringo.android'
     });
-    const url = `https://experiences.wolfservices.production.wolf.live/experience/lonoo/2.11.0/index.html?groupId=${GROUP_ID}&lobbyId=${lobbyId}`;
+    const url = `https://experiences.wolfservices.production.wolf.live/experience/golden_goal/1.3.14/index.html?groupId=${GROUP_ID}&lobbyId=${lobbyId}`;
     console.log(`[${accountName}] 🌐 توجيه إلى ${url}`);
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
     await page.setCacheEnabled(true);
@@ -255,17 +258,29 @@ async function closeWindows(page1, page2) {
     console.log(`✅ تم إغلاق النوافذ.`);
 }
 
-// ===== النقر التلقائي للحساب الثاني =====
-function startAutoClick(page, accountName) {
-    console.log(`[${accountName}] 🖱️ بدء النقر التلقائي على (${CLICK_X}, ${CLICK_Y}) كل 5 ثوانٍ...`);
+// ===== دالة السحب =====
+async function performDrag(page, accountName) {
+    try {
+        console.log(`[${accountName}] 🖱️ السحب من (${DRAG_START.x},${DRAG_START.y}) إلى (${DRAG_END.x},${DRAG_END.y})`);
+        await page.mouse.move(DRAG_START.x, DRAG_START.y);
+        await sleep(200);
+        await page.mouse.down();
+        await sleep(300);
+        await page.mouse.move(DRAG_END.x, DRAG_END.y, { steps: 15 });
+        await sleep(300);
+        await page.mouse.up();
+        console.log(`[${accountName}] ✅ تم السحب.`);
+    } catch (e) {
+        console.error(`[${accountName}] ❌ فشل السحب:`, e.message);
+    }
+}
+
+// ===== بدء السحب التلقائي المتكرر =====
+function startAutoDrag(page, accountName) {
+    console.log(`[${accountName}] 🖱️ بدء السحب التلقائي كل ${DRAG_INTERVAL/1000} ثانية...`);
     const interval = setInterval(async () => {
-        try {
-            await page.mouse.click(CLICK_X, CLICK_Y);
-            console.log(`[${accountName}] ✅ تم النقر على (${CLICK_X}, ${CLICK_Y})`);
-        } catch (e) {
-            console.log(`[${accountName}] ❌ فشل النقر:`, e.message);
-        }
-    }, 5000);
+        await performDrag(page, accountName);
+    }, DRAG_INTERVAL);
     return interval;
 }
 
@@ -339,13 +354,14 @@ async function runRound(roundNumber, browser1, browser2) {
             injectData(page2, TOKEN_2, USER_ID_2, "الحساب الثاني", lobbyId)
         ]);
 
-        const autoClickInterval = startAutoClick(page2, "الحساب الثاني");
+        // بدء السحب التلقائي للحساب الثاني
+        const autoDragInterval = startAutoDrag(page2, "الحساب الثاني");
 
         console.log(`⏳ انتظار ${WAIT_TIME} ثانية (${WAIT_TIME/60} دقيقة)...`);
         await sleep(WAIT_TIME * 1000);
 
-        clearInterval(autoClickInterval);
-        console.log(`[الحساب الثاني] 🛑 تم إيقاف النقر التلقائي.`);
+        clearInterval(autoDragInterval);
+        console.log(`[الحساب الثاني] 🛑 تم إيقاف السحب التلقائي.`);
 
         await closeWindows(page1, page2);
 
@@ -369,6 +385,7 @@ async function runRound(roundNumber, browser1, browser2) {
 // ===================== MAIN =====================
 async function main() {
     console.log(`🚀 بدء البوت (مدة الانتظار: ${WAIT_TIME} ثانية)`);
+    console.log(`📌 إعدادات السحب: من (${DRAG_START.x},${DRAG_START.y}) إلى (${DRAG_END.x},${DRAG_END.y}) كل ${DRAG_INTERVAL/1000} ثانية`);
 
     let browser1, browser2;
 
