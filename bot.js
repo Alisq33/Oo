@@ -9,8 +9,11 @@ const USER_ID_HOST = 80055399;
 const TOKEN_GUEST = "6c278a87-a015-4bbc-b963-6e7196e2c652";
 const USER_ID_GUEST = 51660277;
 const GROUP_ID = 18432094;
-const WAIT_TIME = 145; // 145 ثانية قبل الخروج
-const DRAG_INTERVAL = 3000; // 3 ثوان بين كل سحب
+
+const ROUND_DURATION = 90;            // مدة الجولة (بالثواني)
+const MAX_LOBBY_ATTEMPTS = 25;        // عدد محاولات إنشاء اللوبي
+const RETRY_WAIT = 90;               // انتظار بعد فشل المحاولات (بالثواني)
+const DRAG_INTERVAL = 3000;           // 3 ثوان بين كل سحب
 
 // ===== رؤوس HTTP =====
 const baseHeaders = {
@@ -41,7 +44,7 @@ function deleteTempDir(dir) {
     }
 }
 
-// ===== 1. إنشاء جلسة =====
+// ===== دوال API =====
 async function createSession(token, accountName) {
     console.log(`[${accountName}] جاري إنشاء الجلسة...`);
     const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
@@ -79,25 +82,6 @@ async function createSession(token, accountName) {
     }
 }
 
-// ===== 2. حذف الجلسة (DELETE) =====
-async function deleteSession(token, sessionToken, accountName) {
-    const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
-    try {
-        const res = await fetch(`https://experience.palringo.com/experience/session/token/${sessionToken}`, {
-            method: "DELETE",
-            headers
-        });
-        if (res.status === 204) {
-            console.log(`[${accountName}] ✅ تم إنهاء الجلسة رسمياً (DELETE)`);
-            return true;
-        }
-    } catch (e) {
-        console.error(`[${accountName}] خطأ أثناء الحذف:`, e.message);
-    }
-    return false;
-}
-
-// ===== 3. إنشاء لوبي (Penalty Shootout - typeId=13) =====
 async function createLobby(token) {
     const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
     const body = {
@@ -118,7 +102,7 @@ async function createLobby(token) {
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        console.log(`✅ تم إنشاء اللوبي (typeId=13): ${data.id}`);
+        console.log(`✅ تم إنشاء اللوبي: ${data.id}`);
         return data.id;
     } catch (e) {
         console.error("❌ فشل إنشاء اللوبي:", e.message);
@@ -126,7 +110,6 @@ async function createLobby(token) {
     }
 }
 
-// ===== 4. انضمام =====
 async function joinLobby(token, lobbyId) {
     const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
     const body = { data: "", playerIp: "2001:16a2:3006:9b00:a1a3:23e2:1385:b71b" };
@@ -137,7 +120,7 @@ async function joinLobby(token, lobbyId) {
             body: JSON.stringify(body)
         });
         if (res.status === 200) {
-            console.log(`✅ الحساب انضم إلى ${lobbyId}`);
+            console.log(`✅ انضم الضيف إلى ${lobbyId}`);
             return true;
         }
     } catch (e) {
@@ -146,7 +129,6 @@ async function joinLobby(token, lobbyId) {
     return false;
 }
 
-// ===== 5. بدء اللعبة =====
 async function startGame(token, lobbyId) {
     const headers = { ...baseHeaders, "authorization": `Bearer ${token}`, "content-length": "0" };
     try {
@@ -160,8 +142,8 @@ async function startGame(token, lobbyId) {
     }
 }
 
-// ===== 6. فتح اللوبي في المتصفح =====
-async function navigateToLobby(page, token, accountName, lobbyId) {
+// ===== دوال المتصفح =====
+async function navigateToLobby(page, token, lobbyId) {
     await page.setUserAgent('Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/150.0.7871.124 Mobile Safari/537.36');
     await page.setExtraHTTPHeaders({
         'Authorization': `Bearer ${token}`,
@@ -169,14 +151,13 @@ async function navigateToLobby(page, token, accountName, lobbyId) {
         'X-Requested-With': 'com.palringo.android'
     });
     const url = `https://experiences.wolfservices.production.wolf.live/experience/golden_goal/1.3.14/index.html?groupId=${GROUP_ID}&lobbyId=${lobbyId}`;
-    console.log(`[${accountName}] 🌐 فتح ${url}`);
+    console.log(`[الضيف] 🌐 توجيه إلى ${url}`);
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
     await page.setCacheEnabled(true);
-    console.log(`[${accountName}] ✅ تم تحميل الصفحة.`);
+    console.log(`[الضيف] ✅ تم تحميل الصفحة.`);
 }
 
-// ===== 7. حقن البيانات =====
-async function injectData(page, token, userId, accountName, lobbyId) {
+async function injectData(page, token, userId, lobbyId) {
     await page.evaluate((token, userId, groupId, lobbyId) => {
         window.Gamepad = {
             _listeners: {},
@@ -214,7 +195,6 @@ async function injectData(page, token, userId, accountName, lobbyId) {
             requestInGamePurchase: function(){},
             loadExternalUrl: function(){}
         };
-
         window.WebViewChannel = {
             postMessage: function(message) {
                 try {
@@ -228,7 +208,6 @@ async function injectData(page, token, userId, accountName, lobbyId) {
                 } catch (e) {}
             }
         };
-
         const userData = {
             platform: 'android',
             contextType: 'group',
@@ -240,58 +219,18 @@ async function injectData(page, token, userId, accountName, lobbyId) {
             userId: userId,
             lobbyId: lobbyId
         };
-
         window.postMessage({ type: 'setUserData', args: userData }, '*');
         window.Gamepad.localEmit('setUserData', userData);
         window.Gamepad.emit('setUserData', userData);
         console.log(`✅ تم إرسال setUserData`);
     }, token, userId, GROUP_ID, lobbyId);
     await sleep(1000);
-    console.log(`[${accountName}] ✅ تم حقن البيانات.`);
+    console.log(`[الضيف] ✅ تم حقن البيانات.`);
 }
 
-// ===== 8. الخروج (surrender) =====
-async function surrender(page, accountName) {
-    console.log(`[${accountName}] 📤 إرسال أمر الخروج...`);
-    await page.evaluate(() => {
-        window.postMessage({ type: 'requestExit', args: '{}' }, '*');
-        if (window.Gamepad) {
-            window.Gamepad.emit('requestExit', {});
-            window.Gamepad.localEmit('requestExit', {});
-        }
-        const btns = document.querySelectorAll('button');
-        for (let b of btns) {
-            const txt = b.innerText || '';
-            if (/back|خروج|exit/i.test(txt)) {
-                b.click();
-                break;
-            }
-        }
-    });
-    await sleep(2000);
+// ===== دالة السحب =====
+async function performDrag(page) {
     try {
-        await page.waitForSelector('button', { timeout: 3000 });
-        await page.evaluate(() => {
-            const btns = document.querySelectorAll('button');
-            for (let b of btns) {
-                const txt = b.innerText || '';
-                if (/نعم|yes|confirm|تأكيد/i.test(txt)) {
-                    b.click();
-                    break;
-                }
-            }
-        });
-        console.log(`[${accountName}] ✅ تم تأكيد الخروج.`);
-    } catch (e) {
-        console.log(`[${accountName}] ℹ️ لم تظهر رسالة تأكيد، تم الخروج مباشرة.`);
-    }
-    await sleep(3000);
-}
-
-// ===== 9. دالة السحب المتكرر =====
-async function performDrag(page, accountName) {
-    try {
-        console.log(`[${accountName}] 🖱️ السحب من (300,338) إلى (264,470)...`);
         await page.mouse.move(300, 338);
         await sleep(200);
         await page.mouse.down();
@@ -299,72 +238,57 @@ async function performDrag(page, accountName) {
         await page.mouse.move(264, 470, { steps: 15 });
         await sleep(300);
         await page.mouse.up();
-        console.log(`[${accountName}] ✅ تم السحب.`);
+        console.log(`[الضيف] ✅ تم السحب.`);
     } catch (e) {
-        console.error(`[${accountName}] خطأ في السحب:`, e.message);
+        console.warn(`[الضيف] ⚠️ فشل السحب:`, e.message);
     }
+}
+
+// ===== تشغيل السحب لمدة محددة =====
+async function runDragForDuration(page, durationSeconds) {
+    console.log(`🔄 بدء السحب لمدة ${durationSeconds} ثانية (كل ${DRAG_INTERVAL/1000} ثانية)...`);
+    const endTime = Date.now() + durationSeconds * 1000;
+    let dragInterval = setInterval(async () => {
+        if (Date.now() >= endTime) {
+            clearInterval(dragInterval);
+            console.log(`⏹️ تم إيقاف السحب (انتهت المدة).`);
+            return;
+        }
+        await performDrag(page);
+    }, DRAG_INTERVAL);
+    // ننتظر حتى انتهاء المدة
+    while (Date.now() < endTime) {
+        await sleep(1000);
+    }
+    clearInterval(dragInterval);
+    console.log(`✅ انتهت فترة السحب.`);
 }
 
 // ===== الدالة الرئيسية =====
 async function main() {
-    let browser1, browser2;
-    let tempDir1, tempDir2;
-    let dragInterval = null;
+    let browser = null;
+    let page = null;
+    let tempDir = null;
+    let isRunning = true;
 
-    // تنظيف المجلدات المؤقتة عند الخروج
+    // تنظيف عند الخروج
     const cleanup = () => {
-        if (dragInterval) clearInterval(dragInterval);
-        if (tempDir1) deleteTempDir(tempDir1);
-        if (tempDir2) deleteTempDir(tempDir2);
-        try { if (browser1) browser1.close(); } catch (e) {}
-        try { if (browser2) browser2.close(); } catch (e) {}
+        isRunning = false;
+        if (tempDir) deleteTempDir(tempDir);
+        if (browser) browser.close().catch(() => {});
     };
     process.on('exit', cleanup);
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
 
     try {
-        // 1. إنشاء الجلسات
-        const sessionHost = await createSession(TOKEN_HOST, "الحساب المنشئ");
-        if (!sessionHost) throw new Error("فشل جلسة المنشئ");
-        const sessionGuest = await createSession(TOKEN_GUEST, "الحساب الضيف");
-        if (!sessionGuest) throw new Error("فشل جلسة الضيف");
+        // 1. فتح متصفح واحد للضيف (مع مجلد مؤقت)
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'puppeteer-'));
+        console.log(`📁 مجلد مؤقت للضيف: ${tempDir}`);
 
-        // 2. إنشاء لوبي Penalty Shootout
-        const lobbyId = await createLobby(TOKEN_HOST);
-        if (!lobbyId) throw new Error("فشل إنشاء اللوبي");
-        console.log(`✅ اللوبي: ${lobbyId}`);
-
-        // 3. انضمام الحساب الضيف
-        const joined = await joinLobby(TOKEN_GUEST, lobbyId);
-        if (!joined) throw new Error("فشل انضمام الضيف");
-
-        // 4. بدء اللعبة
-        await startGame(TOKEN_HOST, lobbyId);
-
-        // 5. إنشاء مجلدات مؤقتة فريدة لكل متصفح
-        tempDir1 = fs.mkdtempSync(path.join(os.tmpdir(), 'puppeteer-'));
-        tempDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'puppeteer-'));
-        console.log(`📁 مجلد مؤقت 1: ${tempDir1}`);
-        console.log(`📁 مجلد مؤقت 2: ${tempDir2}`);
-
-        // 6. فتح المتصفحات في وضع headless (لـ GitHub Actions)
-        console.log("🚀 فتح المتصفحين في وضع headless...");
-        browser1 = await puppeteer.launch({
-            headless: 'new', // أو true
-            userDataDir: tempDir1,
-            args: [
-                '--disable-web-security',
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--window-size=600,600',
-                '--disable-session-crashed-bubble',
-                '--disable-features=TranslateUI'
-            ]
-        });
-        browser2 = await puppeteer.launch({
+        browser = await puppeteer.launch({
             headless: 'new',
-            userDataDir: tempDir2,
+            userDataDir: tempDir,
             args: [
                 '--disable-web-security',
                 '--no-sandbox',
@@ -374,68 +298,85 @@ async function main() {
                 '--disable-features=TranslateUI'
             ]
         });
+        page = await browser.newPage();
+        await page.setViewport({ width: 600, height: 600 });
 
-        const page1 = await browser1.newPage();
-        const page2 = await browser2.newPage();
-        await page1.setViewport({ width: 600, height: 600 });
-        await page2.setViewport({ width: 600, height: 600 });
+        // 2. الحلقة الرئيسية للجولات
+        let round = 1;
+        while (isRunning) {
+            console.log(`\n🔄 === جولة ${round} ===`);
 
-        // 7. الانتقال إلى اللوبي
-        await Promise.all([
-            navigateToLobby(page1, TOKEN_HOST, "الحساب المنشئ", lobbyId),
-            navigateToLobby(page2, TOKEN_GUEST, "الحساب الضيف", lobbyId)
-        ]);
+            // 2.1 إنشاء جلسات جديدة (لتحديث التوكنات)
+            const sessionHost = await createSession(TOKEN_HOST, "المنشئ");
+            if (!sessionHost) {
+                console.log("❌ فشل جلسة المنشئ، انتظار 30 ثانية...");
+                await sleep(30000);
+                continue;
+            }
+            const sessionGuest = await createSession(TOKEN_GUEST, "الضيف");
+            if (!sessionGuest) {
+                console.log("❌ فشل جلسة الضيف، انتظار 30 ثانية...");
+                await sleep(30000);
+                continue;
+            }
 
-        console.log("⏳ انتظار 5 ثوانٍ قبل حقن البيانات...");
-        await sleep(5000);
+            // 2.2 محاولة إنشاء لوبي (حتى 25 محاولة)
+            let lobbyId = null;
+            for (let attempt = 1; attempt <= MAX_LOBBY_ATTEMPTS; attempt++) {
+                console.log(`[API] 🏗️ محاولة إنشاء لوبي رقم ${attempt}/${MAX_LOBBY_ATTEMPTS}...`);
+                lobbyId = await createLobby(TOKEN_HOST);
+                if (!lobbyId) {
+                    await sleep(3000);
+                    continue;
+                }
 
-        // 8. حقن البيانات (تسجيل وقت البدء)
-        console.log("📤 حقن البيانات...");
-        const startTime = Date.now();
-        await Promise.all([
-            injectData(page1, TOKEN_HOST, USER_ID_HOST, "الحساب المنشئ", lobbyId),
-            injectData(page2, TOKEN_GUEST, USER_ID_GUEST, "الحساب الضيف", lobbyId)
-        ]);
+                // انضمام الضيف
+                const joined = await joinLobby(TOKEN_GUEST, lobbyId);
+                if (!joined) {
+                    console.log("❌ فشل انضمام الضيف، إلغاء اللوبي...");
+                    lobbyId = null;
+                    await sleep(3000);
+                    continue;
+                }
 
-        // 9. بدء التكرار كل 3 ثوانٍ
-        console.log("⏳ انتظار 3 ثوانٍ بعد الحقن لضمان ظهور اللعبة...");
-        await sleep(3000);
-        console.log("🔄 بدء السحب المتكرر كل 3 ثوانٍ...");
+                // بدء اللعبة
+                const started = await startGame(TOKEN_HOST, lobbyId);
+                if (!started) {
+                    lobbyId = null;
+                    await sleep(3000);
+                    continue;
+                }
 
-        dragInterval = setInterval(async () => {
-            await performDrag(page2, "الحساب الضيف");
-        }, DRAG_INTERVAL);
+                console.log(`✅ تم إنشاء اللوبي وبدء اللعبة بنجاح (id: ${lobbyId})`);
+                break;
+            }
 
-        // 10. انتظار المدة المتبقية حتى الخروج (145 ثانية من وقت الحقن)
-        const elapsed = (Date.now() - startTime) / 1000;
-        const remaining = Math.max(0, WAIT_TIME - elapsed);
-        console.log(`⏳ انتظار ${remaining.toFixed(1)} ثانية حتى الخروج...`);
-        if (remaining > 0) await sleep(remaining * 1000);
+            // إذا فشلت كل المحاولات
+            if (!lobbyId) {
+                console.log(`❌ فشل إنشاء لوبي بعد ${MAX_LOBBY_ATTEMPTS} محاولات. انتظار ${RETRY_WAIT} ثانية (بدون سحب)...`);
+                await sleep(RETRY_WAIT * 1000);
+                round++;
+                continue; // نعيد المحاولة من البداية (جولة جديدة)
+            }
 
-        // 11. إيقاف التكرار
-        if (dragInterval) {
-            clearInterval(dragInterval);
-            dragInterval = null;
+            // 2.3 توجيه صفحة الضيف إلى اللوبي الجديد
+            await navigateToLobby(page, TOKEN_GUEST, lobbyId);
+            await sleep(5000);
+            await injectData(page, TOKEN_GUEST, USER_ID_GUEST, lobbyId);
+            await sleep(3000);
+
+            // 2.4 تشغيل السحب لمدة الجولة (90 ثانية)
+            await runDragForDuration(page, ROUND_DURATION);
+
+            console.log(`✅ انتهت الجولة ${round}. سيتم إنشاء لوبي جديد.`);
+            round++;
         }
-        console.log("⏹️ تم إيقاف التكرار.");
 
-        // 12. الخروج للحساب المنشئ فقط
-        await surrender(page1, "الحساب المنشئ");
-
-        // 13. حذف جلسة المنشئ (DELETE)
-        await deleteSession(TOKEN_HOST, sessionHost, "الحساب المنشئ");
-
-        // 14. إغلاق المتصفحات (سيتم حذف المجلدات المؤقتة تلقائياً بواسطة cleanup)
-        await browser1.close();
-        await browser2.close();
-
-        console.log("✅ تمت العملية بنجاح.");
     } catch (e) {
-        console.error("❌ خطأ رئيسي:", e.message);
-        console.error(e.stack);
-        // التأكد من التنظيف
+        console.error("❌ خطأ رئيسي:", e.message, e.stack);
+    } finally {
         cleanup();
-        process.exit(1);
+        console.log("🛑 تم إنهاء البرنامج.");
     }
 }
 
