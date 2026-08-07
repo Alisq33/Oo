@@ -1,6 +1,6 @@
 const puppeteer = require('puppeteer');
 const path = require('path');
-const fs = require('fs-extra');
+const fs = require('fs').promises;
 const crypto = require('crypto');
 const os = require('os');
 
@@ -53,7 +53,7 @@ process.on('uncaughtException', (err) => {
     console.error('❌ Uncaught Exception:', err && err.stack ? err.stack : err);
 });
 
-// ===== دوال الجلسات واللوبي (نفس السابق ولكن معدلة للـ Golden Goal) =====
+// ===== دوال الجلسات واللوبي =====
 async function initializeAccountSession(token, accountName) {
     console.log(`[${accountName}] جاري إنشاء الجلسة...`);
     const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
@@ -158,7 +158,7 @@ async function getLobbyUsers(token, lobbyId) {
     return [];
 }
 
-// ===== حقن البيانات (نفس الكود) =====
+// ===== حقن البيانات =====
 async function injectData(page, token, userId, accountName, lobbyId) {
     await page.evaluate((token, userId, groupId, lobbyId, accountName) => {
         window.Gamepad = {
@@ -233,7 +233,7 @@ async function injectData(page, token, userId, accountName, lobbyId) {
     console.log(`[${accountName}] ✅ تم حقن البيانات.`);
 }
 
-// ===== توجيه الصفحة (Golden Goal) =====
+// ===== توجيه الصفحة =====
 async function navigateToLobby(page, token, accountName, lobbyId) {
     await page.setUserAgent('Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/150.0.7871.124 Mobile Safari/537.36');
     await page.setExtraHTTPHeaders({
@@ -384,19 +384,19 @@ async function main() {
     console.log(`🚀 بدء البوت (مدة الانتظار: ${WAIT_TIME} ثانية)`);
     console.log(`📌 إعدادات السحب: من (${DRAG_START.x},${DRAG_START.y}) إلى (${DRAG_END.x},${DRAG_END.y}) كل ${DRAG_INTERVAL/1000} ثانية`);
 
-    // توليد معرف فريد لهذه التشغيلة لتجنب تعارض ملفات التعريف
+    // توليد معرف فريد لهذه التشغيلة
     const uniqueId = Date.now() + '-' + crypto.randomBytes(4).toString('hex');
     const tempDir = path.join(os.tmpdir(), `chrome-profiles-${uniqueId}`);
     const userDataDir1 = path.join(tempDir, 'account1');
     const userDataDir2 = path.join(tempDir, 'account2');
 
-    // تنظيف المجلدات إذا كانت موجودة
-    await fs.ensureDir(userDataDir1);
-    await fs.ensureDir(userDataDir2);
+    // إنشاء المجلدات المؤقتة
+    await fs.mkdir(userDataDir1, { recursive: true });
+    await fs.mkdir(userDataDir2, { recursive: true });
 
     let browser1, browser2;
 
-    // ===== حلقة إعادة محاولة للتهيئة (جلسات + متصفحات) =====
+    // ===== حلقة إعادة محاولة للتهيئة =====
     while (true) {
         try {
             const session1 = await initializeAccountSession(TOKEN_1, "الحساب الأول");
@@ -445,8 +445,8 @@ async function main() {
             console.error('❌ خطأ فادح أثناء التهيئة:', initError.stack || initError.message);
             try { if (browser1) await browser1.close(); } catch (e) {}
             try { if (browser2) await browser2.close(); } catch (e) {}
-            // حذف المجلدات المؤقتة لإعادة المحاولة
-            try { await fs.remove(tempDir); } catch (e) {}
+            // حذف المجلدات المؤقتة
+            try { await fs.rm(tempDir, { recursive: true, force: true }); } catch (e) {}
             console.log('⏳ انتظار 60 ثانية ثم إعادة محاولة التهيئة...');
             await sleep(60000);
         }
@@ -455,7 +455,7 @@ async function main() {
     // جدولة تنظيف المجلدات عند الخروج
     const cleanup = async () => {
         console.log('🧹 تنظيف الملفات المؤقتة...');
-        try { await fs.remove(tempDir); } catch (e) {}
+        try { await fs.rm(tempDir, { recursive: true, force: true }); } catch (e) {}
         console.log('✅ تم التنظيف.');
     };
     process.on('exit', cleanup);
@@ -472,7 +472,6 @@ async function main() {
     const maxRunTime = 21600 * 1000; // 6 ساعات
 
     while (true) {
-        // التحقق من الوقت المنقضي
         if (Date.now() - startTime > maxRunTime) {
             console.log('⏰ انتهت مدة التشغيل (6 ساعات). إنهاء البوت.');
             break;
@@ -492,7 +491,6 @@ async function main() {
         }
     }
 
-    // إغلاق المتصفحات وتنظيف الملفات
     try { if (browser1) await browser1.close(); } catch (e) {}
     try { if (browser2) await browser2.close(); } catch (e) {}
     await cleanup();
@@ -501,6 +499,13 @@ async function main() {
 
 main().catch(async (err) => {
     console.error('❌ خطأ فادح في main():', err.stack || err.message);
-    // تنظيف
-    try { await fs.remove(path.join(os.tmpdir(), 'chrome-profiles-*')); } catch (e) {}
+    // تنظيف عام
+    try {
+        const dirs = await fs.readdir(os.tmpdir());
+        for (const d of dirs) {
+            if (d.startsWith('chrome-profiles-')) {
+                await fs.rm(path.join(os.tmpdir(), d), { recursive: true, force: true });
+            }
+        }
+    } catch (e) {}
 });
