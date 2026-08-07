@@ -1,6 +1,8 @@
 const puppeteer = require('puppeteer');
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs-extra');
+const crypto = require('crypto');
+const os = require('os');
 
 // ===== قراءة التوكنات من متغيرات البيئة =====
 const TOKEN_1 = process.env.TOKEN_1;
@@ -19,25 +21,21 @@ const WAIT_TIME = 130;
 const MAX_ATTEMPTS = 20;
 const RETRY_DELAY = 180;
 
-// ===== إعدادات السحب (للحساب الثاني) =====
+// ===== إعدادات السحب =====
 const DRAG_START = { x: 300, y: 338 };
 const DRAG_END = { x: 264, y: 470 };
-const DRAG_INTERVAL = 3000; // 3 ثوانٍ بين كل سحب
+const DRAG_INTERVAL = 3000; // 3 ثوانٍ
 
-// ===== مسارات حفظ بيانات المتصفح =====
-const USER_DATA_DIR_1 = path.join(__dirname, 'chrome-profile-account1');
-const USER_DATA_DIR_2 = path.join(__dirname, 'chrome-profile-account2');
-
-// ===== رؤوس HTTP (معدلة للعبة Golden Goal) =====
+// ===== رؤوس HTTP (Golden Goal) =====
 const baseHeaders = {
     "Host": "experience.palringo.com",
     "Connection": "keep-alive",
-    "experience-id": "9",                         // تم التغيير من 5 إلى 9
+    "experience-id": "9",
     "experience-build-type": "release",
     "sec-ch-ua-platform": '"Android"',
     "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Android WebView";v="150"',
     "sec-ch-ua-mobile": "?1",
-    "experience-build-version": "1.3.14",        // تم التغيير من 2.11.0 إلى 1.3.14
+    "experience-build-version": "1.3.14",
     "language-id": "1",
     "user-agent": "Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/150.0.7871.124 Mobile Safari/537.36",
     "content-type": "application/json",
@@ -55,7 +53,7 @@ process.on('uncaughtException', (err) => {
     console.error('❌ Uncaught Exception:', err && err.stack ? err.stack : err);
 });
 
-// ===== دوال الجلسات واللوبي (معدلة) =====
+// ===== دوال الجلسات واللوبي (نفس السابق ولكن معدلة للـ Golden Goal) =====
 async function initializeAccountSession(token, accountName) {
     console.log(`[${accountName}] جاري إنشاء الجلسة...`);
     const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
@@ -64,9 +62,9 @@ async function initializeAccountSession(token, accountName) {
             method: "POST",
             headers,
             body: JSON.stringify({
-                experienceId: 9,                  // تم التغيير
+                experienceId: 9,
                 experienceBuildType: "release",
-                experienceBuildVersion: "1.3.14", // تم التغيير
+                experienceBuildVersion: "1.3.14",
                 platform: "android",
                 contextType: "group",
                 contextId: GROUP_ID,
@@ -112,7 +110,7 @@ async function createLobby(token) {
         method: "POST",
         headers,
         body: JSON.stringify({
-            typeId: 13,                           // تم التغيير من 4 إلى 13
+            typeId: 13,
             groupId: GROUP_ID,
             visibility: "global",
             access: "public",
@@ -160,7 +158,7 @@ async function getLobbyUsers(token, lobbyId) {
     return [];
 }
 
-// ===== حقن بيانات المستخدم (نفس الكود، لا حاجة لتعديل) =====
+// ===== حقن البيانات (نفس الكود) =====
 async function injectData(page, token, userId, accountName, lobbyId) {
     await page.evaluate((token, userId, groupId, lobbyId, accountName) => {
         window.Gamepad = {
@@ -235,7 +233,7 @@ async function injectData(page, token, userId, accountName, lobbyId) {
     console.log(`[${accountName}] ✅ تم حقن البيانات.`);
 }
 
-// ===== توجيه الصفحة إلى لوبي (Golden Goal) =====
+// ===== توجيه الصفحة (Golden Goal) =====
 async function navigateToLobby(page, token, accountName, lobbyId) {
     await page.setUserAgent('Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/150.0.7871.124 Mobile Safari/537.36');
     await page.setExtraHTTPHeaders({
@@ -275,7 +273,6 @@ async function performDrag(page, accountName) {
     }
 }
 
-// ===== بدء السحب التلقائي المتكرر =====
 function startAutoDrag(page, accountName) {
     console.log(`[${accountName}] 🖱️ بدء السحب التلقائي كل ${DRAG_INTERVAL/1000} ثانية...`);
     const interval = setInterval(async () => {
@@ -354,7 +351,6 @@ async function runRound(roundNumber, browser1, browser2) {
             injectData(page2, TOKEN_2, USER_ID_2, "الحساب الثاني", lobbyId)
         ]);
 
-        // بدء السحب التلقائي للحساب الثاني
         const autoDragInterval = startAutoDrag(page2, "الحساب الثاني");
 
         console.log(`⏳ انتظار ${WAIT_TIME} ثانية (${WAIT_TIME/60} دقيقة)...`);
@@ -384,8 +380,19 @@ async function runRound(roundNumber, browser1, browser2) {
 
 // ===================== MAIN =====================
 async function main() {
+    console.log(`🚀 بدء التشغيل لمدة 6 ساعات (21600 ثانية)...`);
     console.log(`🚀 بدء البوت (مدة الانتظار: ${WAIT_TIME} ثانية)`);
     console.log(`📌 إعدادات السحب: من (${DRAG_START.x},${DRAG_START.y}) إلى (${DRAG_END.x},${DRAG_END.y}) كل ${DRAG_INTERVAL/1000} ثانية`);
+
+    // توليد معرف فريد لهذه التشغيلة لتجنب تعارض ملفات التعريف
+    const uniqueId = Date.now() + '-' + crypto.randomBytes(4).toString('hex');
+    const tempDir = path.join(os.tmpdir(), `chrome-profiles-${uniqueId}`);
+    const userDataDir1 = path.join(tempDir, 'account1');
+    const userDataDir2 = path.join(tempDir, 'account2');
+
+    // تنظيف المجلدات إذا كانت موجودة
+    await fs.ensureDir(userDataDir1);
+    await fs.ensureDir(userDataDir2);
 
     let browser1, browser2;
 
@@ -408,13 +415,29 @@ async function main() {
             console.log("🚀 فتح المتصفحين (ثابتان طوال الجلسة) بحجم 600x600...");
             browser1 = await puppeteer.launch({
                 headless: true,
-                userDataDir: USER_DATA_DIR_1,
-                args: ['--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox', '--window-size=600,600']
+                userDataDir: userDataDir1,
+                args: [
+                    '--disable-web-security',
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--window-size=600,600',
+                    '--disable-single-process',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu'
+                ]
             });
             browser2 = await puppeteer.launch({
                 headless: true,
-                userDataDir: USER_DATA_DIR_2,
-                args: ['--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox', '--window-size=600,600']
+                userDataDir: userDataDir2,
+                args: [
+                    '--disable-web-security',
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--window-size=600,600',
+                    '--disable-single-process',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu'
+                ]
             });
 
             break;
@@ -422,13 +445,39 @@ async function main() {
             console.error('❌ خطأ فادح أثناء التهيئة:', initError.stack || initError.message);
             try { if (browser1) await browser1.close(); } catch (e) {}
             try { if (browser2) await browser2.close(); } catch (e) {}
+            // حذف المجلدات المؤقتة لإعادة المحاولة
+            try { await fs.remove(tempDir); } catch (e) {}
             console.log('⏳ انتظار 60 ثانية ثم إعادة محاولة التهيئة...');
             await sleep(60000);
         }
     }
 
+    // جدولة تنظيف المجلدات عند الخروج
+    const cleanup = async () => {
+        console.log('🧹 تنظيف الملفات المؤقتة...');
+        try { await fs.remove(tempDir); } catch (e) {}
+        console.log('✅ تم التنظيف.');
+    };
+    process.on('exit', cleanup);
+    process.on('SIGINT', async () => {
+        console.log('\n🛑 تم استلام SIGINT، إيقاف البوت...');
+        try { if (browser1) await browser1.close(); } catch (e) {}
+        try { if (browser2) await browser2.close(); } catch (e) {}
+        await cleanup();
+        process.exit(0);
+    });
+
     let round = 1;
+    const startTime = Date.now();
+    const maxRunTime = 21600 * 1000; // 6 ساعات
+
     while (true) {
+        // التحقق من الوقت المنقضي
+        if (Date.now() - startTime > maxRunTime) {
+            console.log('⏰ انتهت مدة التشغيل (6 ساعات). إنهاء البوت.');
+            break;
+        }
+
         try {
             const success = await runRound(round, browser1, browser2);
             if (!success) {
@@ -442,8 +491,16 @@ async function main() {
             await sleep(RETRY_DELAY * 1000);
         }
     }
+
+    // إغلاق المتصفحات وتنظيف الملفات
+    try { if (browser1) await browser1.close(); } catch (e) {}
+    try { if (browser2) await browser2.close(); } catch (e) {}
+    await cleanup();
+    console.log('✅ تم إنهاء البوت بنجاح.');
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
     console.error('❌ خطأ فادح في main():', err.stack || err.message);
+    // تنظيف
+    try { await fs.remove(path.join(os.tmpdir(), 'chrome-profiles-*')); } catch (e) {}
 });
