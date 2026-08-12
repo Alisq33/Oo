@@ -3,31 +3,71 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-// ===== بيانات الحسابات =====
-const TOKEN_HOST = "576a2902-db16-4e9f-b503-3da6ba4bf78a";
+// ===== بيانات الحسابات (استبدل التوكنات بتوكنات صالحة) =====
+const TOKEN_HOST = "576a2902-db16-4e9f-b503-3da6ba4bf78a";  // غيّر إلى توكن صالح
 const USER_ID_HOST = 80055399;
-const TOKEN_GUEST = "6c278a87-a015-4bbc-b963-6e7196e2c652";
+const TOKEN_GUEST = "6c278a87-a015-4bbc-b963-6e7196e2c652"; // غيّر إلى توكن صالح
 const USER_ID_GUEST = 51660277;
 const GROUP_ID = 18432094;
-const WAIT_TIME = 90; // 90 ثانية (دقيقة ونصف)
-const DRAG_INTERVAL = 3000; // 3 ثوان بين كل سحب
-const MAX_LOBBY_ATTEMPTS = 25; // عدد محاولات إنشاء اللوبي
+const WAIT_TIME = 120; // 120 ثانية (دقيقتان)
+const MAX_LOBBY_ATTEMPTS = 25;
 const RETRY_WAIT = 90; // انتظار 90 ثانية بعد فشل 25 محاولة
+const WAIT_BETWEEN_ROUNDS = 110; // انتظار 110 ثانية بين الجولات
+
+// ===== إعدادات لعبة XO Battles (القيم الصحيحة) =====
+const EXPERIENCE_ID = 6;
+const LOBBY_TYPE_ID = 5;
+const EXPERIENCE_BUILD_VERSION = "2.11.0";
+const EXPERIENCE_PATH = `/experience/xo_battles/${EXPERIENCE_BUILD_VERSION}/index.html`;
+
+// ===== إعدادات النقرات المتسلسلة =====
+// الضيف: 3 نقرات
+const CLICKS_GUEST = [
+    { x: 234, y: 271 },
+    { x: 228, y: 338 },
+    { x: 222, y: 413 }
+];
+// المنشئ: 3 نقرات
+const CLICKS_HOST = [
+    { x: 353, y: 350 },
+    { x: 360, y: 397 },
+    { x: 312, y: 389 }
+];
+const DELAY_BETWEEN_CLICKS = 200; // 200 مللي ثانية بين النقرات المتتالية
+const DELAY_AFTER_GUEST = 1000;   // 1 ثانية بعد نقرات الضيف
+const DELAY_AFTER_HOST = 2000;    // 2 ثانية بعد نقرات المنشئ
 
 // ===== رؤوس HTTP =====
-const baseHeaders = {
-    "Host": "experience.palringo.com",
-    "Connection": "keep-alive",
-    "experience-id": "9",
-    "experience-build-type": "release",
-    "experience-build-version": "1.3.14",
-    "language-id": "1",
-    "user-agent": "Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/150.0.7871.124 Mobile Safari/537.36",
-    "content-type": "application/json",
-    "Accept": "*/*",
-    "Origin": "https://experiences.wolfservices.production.wolf.live",
-    "X-Requested-With": "com.palringo.android"
-};
+function buildHeaders(token, contentLength = null) {
+    const headers = {
+        "Host": "experience.palringo.com",
+        "Connection": "keep-alive",
+        "sec-ch-ua-platform": '"Android"',
+        "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Android WebView";v="150"',
+        "experience-id": String(EXPERIENCE_ID),
+        "experience-build-type": "release",
+        "sec-ch-ua-mobile": "?1",
+        "experience-build-version": EXPERIENCE_BUILD_VERSION,
+        "language-id": "1",
+        "user-agent": "Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/150.0.7871.181 Mobile Safari/537.36",
+        "content-type": "application/json",
+        "Accept": "*/*",
+        "Origin": "https://experiences.wolfservices.production.wolf.live",
+        "X-Requested-With": "com.palringo.android",
+        "sec-fetch-site": "cross-site",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-dest": "empty",
+        "Referer": "https://experiences.wolfservices.production.wolf.live/",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Language": "en-SA,en;q=0.9,ar-SA;q=0.8,ar;q=0.7,en-TR;q=0.6,en-US;q=0.5",
+        "priority": "u=1, i",
+        "authorization": `Bearer ${token}`
+    };
+    if (contentLength !== null) {
+        headers["content-length"] = String(contentLength);
+    }
+    return headers;
+}
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -35,22 +75,35 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 function deleteTempDir(dir) {
     try {
         if (fs.existsSync(dir)) {
-            fs.rmSync(dir, { recursive: true, force: true });
-            console.log(`🗑️ تم حذف المجلد المؤقت: ${dir}`);
+            setTimeout(() => {
+                try {
+                    fs.rmSync(dir, { recursive: true, force: true });
+                    console.log(`🗑️ تم حذف المجلد المؤقت: ${dir}`);
+                } catch (e) {
+                    console.warn(`⚠️ فشل حذف المجلد المؤقت ${dir}:`, e.message);
+                }
+            }, 2000);
         }
     } catch (e) {
         console.warn(`⚠️ فشل حذف المجلد المؤقت ${dir}:`, e.message);
     }
 }
 
-// ===== دوال API (نفسها مع إضافة بعض التحسينات) =====
+// ===== دوال API =====
 async function createSession(token, accountName) {
     console.log(`[${accountName}] جاري إنشاء الجلسة...`);
-    const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
+    const headers = buildHeaders(token);
+    delete headers["content-length"];
+    delete headers["sec-fetch-site"];
+    delete headers["sec-fetch-mode"];
+    delete headers["sec-fetch-dest"];
+    delete headers["priority"];
+    delete headers["Referer"];
+
     const body = {
-        experienceId: 9,
+        experienceId: EXPERIENCE_ID,
         experienceBuildType: "release",
-        experienceBuildVersion: "1.3.14",
+        experienceBuildVersion: EXPERIENCE_BUILD_VERSION,
         platform: "android",
         contextType: "group",
         contextId: GROUP_ID,
@@ -82,7 +135,13 @@ async function createSession(token, accountName) {
 }
 
 async function deleteSession(token, sessionToken, accountName) {
-    const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
+    const headers = buildHeaders(token);
+    delete headers["content-length"];
+    delete headers["sec-fetch-site"];
+    delete headers["sec-fetch-mode"];
+    delete headers["sec-fetch-dest"];
+    delete headers["priority"];
+    delete headers["Referer"];
     try {
         const res = await fetch(`https://experience.palringo.com/experience/session/token/${sessionToken}`, {
             method: "DELETE",
@@ -99,22 +158,24 @@ async function deleteSession(token, sessionToken, accountName) {
 }
 
 async function createLobby(token, attempt) {
-    const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
     const body = {
-        typeId: 13,
+        typeId: LOBBY_TYPE_ID,
         groupId: GROUP_ID,
         visibility: "global",
         access: "public",
-        displayName: "ㅤ⚽ Penalty Shootout ㅤ",
+        displayName: "❌ XO Battles",
         data: "",
         ownerUserData: "",
-        ownerPlayerIp: "2001:16a2:3006:9b00:a1a3:23e2:1385:b71b"
+        ownerPlayerIp: "188.51.179.94"
     };
+    const bodyStr = JSON.stringify(body);
+    const headers = buildHeaders(token, Buffer.byteLength(bodyStr));
+
     try {
         const res = await fetch("https://experience.palringo.com/lobby", {
             method: "POST",
             headers,
-            body: JSON.stringify(body)
+            body: bodyStr
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -127,26 +188,29 @@ async function createLobby(token, attempt) {
 }
 
 async function joinLobby(token, lobbyId) {
-    const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
-    const body = { data: "", playerIp: "2001:16a2:3006:9b00:a1a3:23e2:1385:b71b" };
+    const body = { data: "", playerIp: "188.51.179.94" };
+    const bodyStr = JSON.stringify(body);
+    const headers = buildHeaders(token, Buffer.byteLength(bodyStr));
     try {
         const res = await fetch(`https://experience.palringo.com/lobby/id/${lobbyId}/user`, {
             method: "POST",
             headers,
-            body: JSON.stringify(body)
+            body: bodyStr
         });
         if (res.status === 200) {
             console.log(`✅ الحساب الضيف انضم إلى ${lobbyId}`);
             return true;
         }
+        console.log(`⚠️ فشل الانضمام، status ${res.status}`);
+        return false;
     } catch (e) {
         console.error("خطأ في الانضمام:", e.message);
+        return false;
     }
-    return false;
 }
 
 async function startGame(token, lobbyId) {
-    const headers = { ...baseHeaders, "authorization": `Bearer ${token}`, "content-length": "0" };
+    const headers = buildHeaders(token, 0);
     try {
         await fetch(`https://experience.palringo.com/lobby/id/${lobbyId}/start`, { method: "POST", headers });
         await fetch(`https://experience.palringo.com/lobby/id/${lobbyId}/close`, { method: "POST", headers });
@@ -158,7 +222,7 @@ async function startGame(token, lobbyId) {
     }
 }
 
-// ===== دوال Puppeteer =====
+// ===== دوال المتصفح =====
 async function navigateToLobby(page, token, accountName, lobbyId) {
     await page.setUserAgent('Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/150.0.7871.124 Mobile Safari/537.36');
     await page.setExtraHTTPHeaders({
@@ -166,7 +230,7 @@ async function navigateToLobby(page, token, accountName, lobbyId) {
         'Origin': 'https://experiences.wolfservices.production.wolf.live',
         'X-Requested-With': 'com.palringo.android'
     });
-    const url = `https://experiences.wolfservices.production.wolf.live/experience/golden_goal/1.3.14/index.html?groupId=${GROUP_ID}&lobbyId=${lobbyId}`;
+    const url = `https://experiences.wolfservices.production.wolf.live${EXPERIENCE_PATH}?groupId=${GROUP_ID}&lobbyId=${lobbyId}`;
     console.log(`[${accountName}] 🌐 فتح ${url}`);
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
     await page.setCacheEnabled(true);
@@ -247,36 +311,40 @@ async function injectData(page, token, userId, accountName, lobbyId) {
     console.log(`[${accountName}] ✅ تم حقن البيانات.`);
 }
 
-async function performDrag(page, accountName) {
-    try {
-        console.log(`[${accountName}] 🖱️ السحب من (300,338) إلى (264,470)...`);
-        await page.mouse.move(300, 338);
-        await sleep(200);
-        await page.mouse.down();
-        await sleep(300);
-        await page.mouse.move(264, 470, { steps: 15 });
-        await sleep(300);
-        await page.mouse.up();
-        console.log(`[${accountName}] ✅ تم السحب.`);
-    } catch (e) {
-        console.error(`[${accountName}] خطأ في السحب:`, e.message);
+// ===== دوال النقرات المتسلسلة =====
+async function clickSequence(page, clicks, accountName) {
+    for (const [index, click] of clicks.entries()) {
+        console.log(`[${accountName}] 🖱️ Click at (${click.x}, ${click.y})`);
+        await page.mouse.click(click.x, click.y);
+        if (index < clicks.length - 1) {
+            await sleep(DELAY_BETWEEN_CLICKS);
+        }
     }
 }
 
-// ===== الدالة الرئيسية المعدلة =====
+async function performFullCycle(pageGuest, pageHost) {
+    // الضيف ينقر 3 نقرات
+    await clickSequence(pageGuest, CLICKS_GUEST, "الضيف");
+    await sleep(DELAY_AFTER_GUEST);
+
+    // المنشئ ينقر 3 نقرات
+    await clickSequence(pageHost, CLICKS_HOST, "المنشئ");
+    await sleep(DELAY_AFTER_HOST);
+}
+
+// ===== الدالة الرئيسية =====
 async function main() {
     let browser1, browser2;
     let tempDir1, tempDir2;
-    let dragInterval = null;
-    let stopDragging = false; // للتحكم في إيقاف التكرار
+    let stopCycle = false;
 
     // تنظيف عند الخروج
     const cleanup = () => {
-        if (dragInterval) clearInterval(dragInterval);
         if (tempDir1) deleteTempDir(tempDir1);
         if (tempDir2) deleteTempDir(tempDir2);
         try { if (browser1) browser1.close(); } catch (e) {}
         try { if (browser2) browser2.close(); } catch (e) {}
+        console.log("🛑 تم التنظيف والخروج.");
     };
     process.on('exit', cleanup);
     process.on('SIGINT', cleanup);
@@ -289,7 +357,7 @@ async function main() {
         console.log(`📁 مجلد مؤقت 1: ${tempDir1}`);
         console.log(`📁 مجلد مؤقت 2: ${tempDir2}`);
 
-        // فتح المتصفحين (مرة واحدة وإعادة استخدامهما)
+        // فتح المتصفحين في وضع headless (لـ GitHub Actions)
         console.log("🚀 فتح المتصفحين في وضع headless...");
         browser1 = await puppeteer.launch({
             headless: 'new',
@@ -345,18 +413,16 @@ async function main() {
                 lobbyId = await createLobby(TOKEN_HOST, attempts);
                 if (!lobbyId) {
                     console.log(`⚠️ فشلت المحاولة ${attempts}/${MAX_LOBBY_ATTEMPTS}`);
-                    await sleep(2000); // انتظار بسيط بين المحاولات
+                    await sleep(2000);
                 }
             }
 
             if (!lobbyId) {
-                // فشل بعد 25 محاولة
                 console.log(`❌ فشل إنشاء اللوبي بعد ${MAX_LOBBY_ATTEMPTS} محاولة، ننتظر ${RETRY_WAIT} ثانية ثم نعيد الدورة`);
-                // حذف الجلسات (اختياري)
                 await deleteSession(TOKEN_HOST, sessionHost, "الحساب المنشئ");
                 await deleteSession(TOKEN_GUEST, sessionGuest, "الحساب الضيف");
                 await sleep(RETRY_WAIT * 1000);
-                continue; // العودة إلى بداية الحلقة
+                continue;
             }
 
             // 3. انضمام الضيف
@@ -379,8 +445,7 @@ async function main() {
                 continue;
             }
 
-            // 5. فتح صفحات جديدة في المتصفحين (نغلق القديمة إن وجدت)
-            // نفتح صفحة جديدة لكل متصفح
+            // 5. فتح صفحات جديدة في المتصفحين
             const page1 = await browser1.newPage();
             const page2 = await browser2.newPage();
             await page1.setViewport({ width: 600, height: 600 });
@@ -402,43 +467,39 @@ async function main() {
                 injectData(page2, TOKEN_GUEST, USER_ID_GUEST, "الحساب الضيف", lobbyId)
             ]);
 
-            console.log("⏳ انتظار 3 ثوانٍ بعد الحقن لضمان ظهور اللعبة...");
+            console.log("⏳ انتظار 3 ثوانٍ بعد الحقن...");
             await sleep(3000);
 
-            // 8. بدء السحب المتكرر لمدة WAIT_TIME (90 ثانية)
-            console.log(`🔄 بدء السحب كل ${DRAG_INTERVAL/1000} ثانية لمدة ${WAIT_TIME} ثانية...`);
-            stopDragging = false;
-            const dragStartTime = Date.now();
-            // نستخدم setInterval مع شرط الإيقاف
-            dragInterval = setInterval(async () => {
-                if (stopDragging) return;
-                await performDrag(page2, "الحساب الضيف");
-            }, DRAG_INTERVAL);
+            // 8. بدء النقرات المتسلسلة المتكررة لمدة WAIT_TIME (120 ثانية)
+            console.log(`🔄 بدء النقرات المتسلسلة لمدة ${WAIT_TIME} ثانية...`);
+            const startTime = Date.now();
+            let cycleCountLocal = 0;
+            stopCycle = false;
 
-            // انتظار المدة المحددة
-            await sleep(WAIT_TIME * 1000);
-
-            // 9. إيقاف التكرار
-            stopDragging = true;
-            if (dragInterval) {
-                clearInterval(dragInterval);
-                dragInterval = null;
+            // حلقة النقرات حتى انتهاء المدة
+            while (Date.now() - startTime < WAIT_TIME * 1000) {
+                if (stopCycle) break;
+                cycleCountLocal++;
+                console.log(`\n--- دورة نقرات ${cycleCountLocal} ---`);
+                await performFullCycle(page2, page1);
+                // بعد كل دورة ننتظر قليلاً (اختياري) لكن التأخيرات موجودة داخل الدالة
             }
-            console.log("⏹️ تم إيقاف التكرار.");
 
-            // 10. إغلاق الصفحات (بدون خروج) وعدم حذف الجلسات (سنعيد استخدامها؟)
-            // لكننا سنغلق الصفحات فقط
+            console.log(`⏹️ تم إيقاف النقرات بعد ${WAIT_TIME} ثانية. (${cycleCountLocal} دورة)`);
+
+            // 9. إغلاق الصفحات (بدون خروج)
             await page1.close();
             await page2.close();
             console.log("🗑️ تم إغلاق الصفحات.");
 
-            // 11. حذف الجلسات (ننهيها نظيفاً)
+            // 10. حذف الجلسات (ننهيها نظيفاً)
             await deleteSession(TOKEN_HOST, sessionHost, "الحساب المنشئ");
             await deleteSession(TOKEN_GUEST, sessionGuest, "الحساب الضيف");
             console.log("✅ تم إنهاء الجلسات.");
 
-            // 12. ننتظر قليلاً قبل الدورة التالية (اختياري)
-            await sleep(3000);
+            // 11. انتظار 110 ثانية قبل بدء الدورة التالية
+            console.log(`⏳ انتظار ${WAIT_BETWEEN_ROUNDS} ثانية قبل الدورة التالية...`);
+            await sleep(WAIT_BETWEEN_ROUNDS * 1000);
             // الدورة تنتهي، ستبدأ من جديد
         }
 
