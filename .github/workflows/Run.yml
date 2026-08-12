@@ -12,7 +12,7 @@ concurrency:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 365        # تم التعديل من 305 إلى 365 لدعم 6 ساعات
+    timeout-minutes: 360        # تم التصحيح إلى 360 كحد أقصى مسموح به من GitHub
     
     steps:
       - name: Checkout Code
