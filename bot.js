@@ -9,10 +9,10 @@ const USER_ID_HOST = 80055399;
 const TOKEN_GUEST = "6c278a87-a015-4bbc-b963-6e7196e2c652"; // غيّر إلى توكن صالح
 const USER_ID_GUEST = 51660277;
 const GROUP_ID = 18432094;
-const WAIT_TIME = 120; // 120 ثانية (دقيقتان)
+const WAIT_TIME = 110; // 120 ثانية (دقيقتان)
 const MAX_LOBBY_ATTEMPTS = 25;
 const RETRY_WAIT = 90; // انتظار 90 ثانية بعد فشل 25 محاولة
-const WAIT_BETWEEN_ROUNDS = 110; // انتظار 110 ثانية بين الجولات
+const WAIT_BETWEEN_ROUNDS = 10; // انتظار 110 ثانية بين الجولات
 
 // ===== إعدادات لعبة XO Battles (القيم الصحيحة) =====
 const EXPERIENCE_ID = 6;
