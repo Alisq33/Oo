@@ -6,7 +6,7 @@ const os = require('os');
 // ===== بيانات الحسابات (استبدل التوكنات بتوكنات صالحة) =====
 const TOKEN_HOST = "576a2902-db16-4e9f-b503-3da6ba4bf78a";  // غيّر إلى توكن صالح
 const USER_ID_HOST = 80055399;
-const TOKEN_GUEST = "6c278a87-a015-4bbc-b963-6e7196e2c652"; // غيّر إلى توكن صالح
+const TOKEN_GUEST = "6d3ce792-7fce-40cd-aa0f-0ab34aca6354"; // غيّر إلى توكن صالح
 const USER_ID_GUEST = 51660277;
 const GROUP_ID = 18432094;
 const WAIT_TIME = 130; // مدة الجولة بالثواني
