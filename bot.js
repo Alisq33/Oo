@@ -6,7 +6,7 @@ const os = require('os');
 // ===== بيانات الحسابات =====
 const TOKEN_HOST = "576a2902-db16-4e9f-b503-3da6ba4bf78a";
 const USER_ID_HOST = 80055399;
-const TOKEN_GUEST = "e8e2272d-962c-493a-8e99-afed2959e588";
+const TOKEN_GUEST = "WE-e8e2272d-962c-493a-8e99-afed2959e588";
 const USER_ID_GUEST = 51660277;
 const GROUP_ID = 18432094;
 const WAIT_TIME = 90; // 90 ثانية (دقيقة ونصف)
