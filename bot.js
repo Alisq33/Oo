@@ -1,26 +1,40 @@
 const puppeteer = require('puppeteer');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 
-// ===== بيانات الحسابات =====
-const TOKEN_HOST = "576a2902-db16-4e9f-b503-3da6ba4bf78a";
-const USER_ID_HOST = 80055399;
-const TOKEN_GUEST = "6d3ce792-7fce-40cd-aa0f-0ab34aca6354";
-const USER_ID_GUEST = 51660277;
-const GROUP_ID = 18432094;
-const WAIT_TIME = 90; // 90 ثانية (دقيقة ونصف)
-const DRAG_INTERVAL = 3000; // 3 ثوان بين كل سحب
-const MAX_LOBBY_ATTEMPTS = 25; // عدد محاولات إنشاء اللوبي
-const RETRY_WAIT = 90; // انتظار 90 ثانية بعد فشل 25 محاولة
+// ===== قراءة التوكنات من متغيرات البيئة =====
+const TOKEN_1 = process.env.TOKEN_1;
+const TOKEN_2 = process.env.TOKEN_2;
+const USER_ID_1 = parseInt(process.env.USER_ID_1) || 80055399;
+const USER_ID_2 = parseInt(process.env.USER_ID_2) || 51660277;
+const GROUP_ID = parseInt(process.env.GROUP_ID) || 18432094;
 
-// ===== رؤوس HTTP =====
+if (!TOKEN_1 || !TOKEN_2) {
+    console.error('❌ التوكنات غير موجودة في متغيرات البيئة!');
+    process.exit(1);
+}
+
+// ===== إعدادات الجولات =====
+const WAIT_TIME = 130;
+const MAX_ATTEMPTS = 20;  // تم التعديل من 10 إلى 20
+const RETRY_DELAY = 180;
+
+// ===== إحداثيات النقر للحساب الثاني =====
+const CLICK_X = 508;
+const CLICK_Y = 361;
+
+const USER_DATA_DIR_1 = path.join(__dirname, 'chrome-profile-account1');
+const USER_DATA_DIR_2 = path.join(__dirname, 'chrome-profile-account2');
+
 const baseHeaders = {
     "Host": "experience.palringo.com",
     "Connection": "keep-alive",
-    "experience-id": "9",
+    "experience-id": "5",
     "experience-build-type": "release",
-    "experience-build-version": "1.3.14",
+    "sec-ch-ua-platform": '"Android"',
+    "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Android WebView";v="150"',
+    "sec-ch-ua-mobile": "?1",
+    "experience-build-version": "2.11.0",
     "language-id": "1",
     "user-agent": "Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/150.0.7871.124 Mobile Safari/537.36",
     "content-type": "application/json",
@@ -31,150 +45,121 @@ const baseHeaders = {
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// ===== دالة حذف المجلد المؤقت =====
-function deleteTempDir(dir) {
-    try {
-        if (fs.existsSync(dir)) {
-            fs.rmSync(dir, { recursive: true, force: true });
-            console.log(`🗑️ تم حذف المجلد المؤقت: ${dir}`);
-        }
-    } catch (e) {
-        console.warn(`⚠️ فشل حذف المجلد المؤقت ${dir}:`, e.message);
-    }
-}
+process.on('unhandledRejection', (err) => {
+    console.error('❌ Unhandled Rejection:', err && err.stack ? err.stack : err);
+});
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err && err.stack ? err.stack : err);
+});
 
-// ===== دوال API (نفسها مع إضافة بعض التحسينات) =====
-async function createSession(token, accountName) {
+// ===== دوال الجلسات واللوبي =====
+async function initializeAccountSession(token, accountName) {
     console.log(`[${accountName}] جاري إنشاء الجلسة...`);
     const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
-    const body = {
-        experienceId: 9,
-        experienceBuildType: "release",
-        experienceBuildVersion: "1.3.14",
-        platform: "android",
-        contextType: "group",
-        contextId: GROUP_ID,
-        screenState: "full",
-        screenStatePreviously: "full",
-        data: ""
-    };
     try {
         const res = await fetch("https://experience.palringo.com/experience/session", {
             method: "POST",
             headers,
-            body: JSON.stringify(body)
+            body: JSON.stringify({
+                experienceId: 5,
+                experienceBuildType: "release",
+                experienceBuildVersion: "2.11.0",
+                platform: "android",
+                contextType: "group",
+                contextId: GROUP_ID,
+                screenState: "full",
+                screenStatePreviously: "full",
+                data: ""
+            })
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const sessionToken = data.token;
-        if (!sessionToken) throw new Error("لا يوجد token");
-        await fetch(`https://experience.palringo.com/experience/session/token/${sessionToken}`, {
-            method: "PUT",
-            headers,
-            body: JSON.stringify(body)
-        });
-        console.log(`[${accountName}] ✅ تم تفعيل الجلسة`);
-        return sessionToken;
-    } catch (e) {
-        console.error(`[${accountName}] خطأ في الجلسة:`, e.message);
-        return null;
-    }
-}
-
-async function deleteSession(token, sessionToken, accountName) {
-    const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
-    try {
-        const res = await fetch(`https://experience.palringo.com/experience/session/token/${sessionToken}`, {
-            method: "DELETE",
-            headers
-        });
-        if (res.status === 204) {
-            console.log(`[${accountName}] ✅ تم إنهاء الجلسة رسمياً (DELETE)`);
-            return true;
+        if (res.ok) {
+            const data = await res.json();
+            const sessionToken = data.token;
+            if (sessionToken) {
+                await fetch(`https://experience.palringo.com/experience/session/token/${sessionToken}`, {
+                    method: "PUT",
+                    headers,
+                    body: JSON.stringify({
+                        experienceId: 5,
+                        experienceBuildType: "release",
+                        experienceBuildVersion: "2.11.0",
+                        platform: "android",
+                        contextType: "group",
+                        contextId: GROUP_ID,
+                        screenState: "full",
+                        screenStatePreviously: "full",
+                        data: ""
+                    })
+                });
+                console.log(`[${accountName}] ✅ تم تفعيل الجلسة`);
+                return sessionToken;
+            }
+        } else {
+            console.error(`[${accountName}] ❌ فشل إنشاء الجلسة، status: ${res.status}`);
         }
     } catch (e) {
-        console.error(`[${accountName}] خطأ أثناء الحذف:`, e.message);
+        console.error(`[${accountName}] خطأ:`, e.stack || e.message);
     }
-    return false;
+    return null;
 }
 
-async function createLobby(token, attempt) {
+async function createLobby(token) {
     const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
-    const body = {
-        typeId: 13,
-        groupId: GROUP_ID,
-        visibility: "global",
-        access: "public",
-        displayName: "ㅤ⚽ Penalty Shootout ㅤ",
-        data: "",
-        ownerUserData: "",
-        ownerPlayerIp: "2001:16a2:3006:9b00:a1a3:23e2:1385:b71b"
-    };
-    try {
-        const res = await fetch("https://experience.palringo.com/lobby", {
-            method: "POST",
-            headers,
-            body: JSON.stringify(body)
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        console.log(`✅ تم إنشاء اللوبي (محاولة ${attempt}): ${data.id}`);
-        return data.id;
-    } catch (e) {
-        console.error(`❌ فشل إنشاء اللوبي (محاولة ${attempt}):`, e.message);
-        return null;
-    }
+    const res = await fetch("https://experience.palringo.com/lobby", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+            typeId: 4,
+            groupId: GROUP_ID,
+            visibility: "global",
+            access: "public",
+            displayName: "ㅤ🐈⬛ ㅤ",
+            data: "",
+            ownerUserData: "",
+            ownerPlayerIp: "188.52.62.51"
+        })
+    });
+    const data = await res.json();
+    return data.id;
 }
 
 async function joinLobby(token, lobbyId) {
     const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
-    const body = { data: "", playerIp: "2001:16a2:3006:9b00:a1a3:23e2:1385:b71b" };
-    try {
-        const res = await fetch(`https://experience.palringo.com/lobby/id/${lobbyId}/user`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(body)
-        });
-        if (res.status === 200) {
-            console.log(`✅ الحساب الضيف انضم إلى ${lobbyId}`);
-            return true;
-        }
-    } catch (e) {
-        console.error("خطأ في الانضمام:", e.message);
-    }
-    return false;
+    const res = await fetch(`https://experience.palringo.com/lobby/id/${lobbyId}/user`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ data: "", playerIp: "2001:16a2:32c0:b300:50f:fbd0:fd5a:d326" })
+    });
+    return res.status === 200;
+}
+
+async function closeLobby(token, lobbyId) {
+    const headers = { ...baseHeaders, "authorization": `Bearer ${token}`, "content-length": "0" };
+    await fetch(`https://experience.palringo.com/lobby/id/${lobbyId}/close`, { method: "POST", headers });
+    console.log(`[API] 🚪 تم إغلاق اللوبي ${lobbyId}`);
 }
 
 async function startGame(token, lobbyId) {
     const headers = { ...baseHeaders, "authorization": `Bearer ${token}`, "content-length": "0" };
-    try {
-        await fetch(`https://experience.palringo.com/lobby/id/${lobbyId}/start`, { method: "POST", headers });
-        await fetch(`https://experience.palringo.com/lobby/id/${lobbyId}/close`, { method: "POST", headers });
-        console.log(`✅ تم بدء اللوبي ${lobbyId}`);
-        return true;
-    } catch (e) {
-        console.error("خطأ في البدء:", e.message);
-        return false;
+    console.log(`[API] ✅ جاري بدء اللوبي ${lobbyId}...`);
+    await fetch(`https://experience.palringo.com/lobby/id/${lobbyId}/start`, { method: "POST", headers });
+    await fetch(`https://experience.palringo.com/lobby/id/${lobbyId}/close`, { method: "POST", headers });
+    console.log(`[API] ✅ تم إرسال Start & Close`);
+}
+
+async function getLobbyUsers(token, lobbyId) {
+    const headers = { ...baseHeaders, "authorization": `Bearer ${token}` };
+    const res = await fetch(`https://experience.palringo.com/lobby/id/${lobbyId}`, { headers });
+    if (res.status === 200) {
+        const data = await res.json();
+        return data.users || [];
     }
+    return [];
 }
 
-// ===== دوال Puppeteer =====
-async function navigateToLobby(page, token, accountName, lobbyId) {
-    await page.setUserAgent('Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/150.0.7871.124 Mobile Safari/537.36');
-    await page.setExtraHTTPHeaders({
-        'Authorization': `Bearer ${token}`,
-        'Origin': 'https://experiences.wolfservices.production.wolf.live',
-        'X-Requested-With': 'com.palringo.android'
-    });
-    const url = `https://experiences.wolfservices.production.wolf.live/experience/golden_goal/1.3.14/index.html?groupId=${GROUP_ID}&lobbyId=${lobbyId}`;
-    console.log(`[${accountName}] 🌐 فتح ${url}`);
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-    await page.setCacheEnabled(true);
-    console.log(`[${accountName}] ✅ تم تحميل الصفحة.`);
-}
-
+// ===== حقن بيانات المستخدم =====
 async function injectData(page, token, userId, accountName, lobbyId) {
-    await page.evaluate((token, userId, groupId, lobbyId) => {
+    await page.evaluate((token, userId, groupId, lobbyId, accountName) => {
         window.Gamepad = {
             _listeners: {},
             on: function(event, cb) {
@@ -241,213 +226,207 @@ async function injectData(page, token, userId, accountName, lobbyId) {
         window.postMessage({ type: 'setUserData', args: userData }, '*');
         window.Gamepad.localEmit('setUserData', userData);
         window.Gamepad.emit('setUserData', userData);
-        console.log(`✅ تم إرسال setUserData`);
-    }, token, userId, GROUP_ID, lobbyId);
+        console.log(`✅ تم إرسال setUserData للـ ${accountName}`);
+    }, token, userId, GROUP_ID, lobbyId, accountName);
     await sleep(1000);
     console.log(`[${accountName}] ✅ تم حقن البيانات.`);
 }
 
-async function performDrag(page, accountName) {
-    try {
-        console.log(`[${accountName}] 🖱️ السحب من (300,338) إلى (264,470)...`);
-        await page.mouse.move(300, 338);
-        await sleep(200);
-        await page.mouse.down();
-        await sleep(300);
-        await page.mouse.move(264, 470, { steps: 15 });
-        await sleep(300);
-        await page.mouse.up();
-        console.log(`[${accountName}] ✅ تم السحب.`);
-    } catch (e) {
-        console.error(`[${accountName}] خطأ في السحب:`, e.message);
-    }
+// ===== توجيه الصفحة إلى لوبي =====
+async function navigateToLobby(page, token, accountName, lobbyId) {
+    await page.setUserAgent('Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/150.0.7871.124 Mobile Safari/537.36');
+    await page.setExtraHTTPHeaders({
+        'Authorization': `Bearer ${token}`,
+        'Origin': 'https://experiences.wolfservices.production.wolf.live',
+        'X-Requested-With': 'com.palringo.android'
+    });
+    const url = `https://experiences.wolfservices.production.wolf.live/experience/lonoo/2.11.0/index.html?groupId=${GROUP_ID}&lobbyId=${lobbyId}`;
+    console.log(`[${accountName}] 🌐 توجيه إلى ${url}`);
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.setCacheEnabled(true);
+    console.log(`[${accountName}] ✅ تم تحميل الصفحة.`);
 }
 
-// ===== الدالة الرئيسية المعدلة =====
-async function main() {
-    let browser1, browser2;
-    let tempDir1, tempDir2;
-    let dragInterval = null;
-    let stopDragging = false; // للتحكم في إيقاف التكرار
+// ===== إغلاق النوافذ =====
+async function closeWindows(page1, page2) {
+    console.log(`🔄 إغلاق النوافذ الحالية...`);
+    try { await page1.close(); } catch(e) {}
+    try { await page2.close(); } catch(e) {}
+    console.log(`✅ تم إغلاق النوافذ.`);
+}
 
-    // تنظيف عند الخروج
-    const cleanup = () => {
-        if (dragInterval) clearInterval(dragInterval);
-        if (tempDir1) deleteTempDir(tempDir1);
-        if (tempDir2) deleteTempDir(tempDir2);
-        try { if (browser1) browser1.close(); } catch (e) {}
-        try { if (browser2) browser2.close(); } catch (e) {}
-    };
-    process.on('exit', cleanup);
-    process.on('SIGINT', cleanup);
-    process.on('SIGTERM', cleanup);
+// ===== النقر التلقائي للحساب الثاني =====
+function startAutoClick(page, accountName) {
+    console.log(`[${accountName}] 🖱️ بدء النقر التلقائي على (${CLICK_X}, ${CLICK_Y}) كل 5 ثوانٍ...`);
+    const interval = setInterval(async () => {
+        try {
+            await page.mouse.click(CLICK_X, CLICK_Y);
+            console.log(`[${accountName}] ✅ تم النقر على (${CLICK_X}, ${CLICK_Y})`);
+        } catch (e) {
+            console.log(`[${accountName}] ❌ فشل النقر:`, e.message);
+        }
+    }, 5000);
+    return interval;
+}
+
+// ===== تشغيل جولة واحدة =====
+async function runRound(roundNumber, browser1, browser2) {
+    console.log(`\n🔄 === جولة ${roundNumber} ===`);
+
+    let lobbyId = null;
+    let attempt = 0;
+
+    while (attempt < MAX_ATTEMPTS) {
+        attempt++;
+        console.log(`[API] 🏗️ محاولة إنشاء لوبي رقم ${attempt}...`);
+
+        try {
+            lobbyId = await createLobby(TOKEN_1);
+            console.log(`✅ تم إنشاء اللوبي: ${lobbyId}`);
+
+            const joined = await joinLobby(TOKEN_2, lobbyId);
+            if (!joined) {
+                console.log("❌ فشل انضمام الحساب الثاني. إعادة المحاولة...");
+                await closeLobby(TOKEN_1, lobbyId);
+                await sleep(2000);
+                continue;
+            }
+            console.log("✅ الحساب الثاني انضم");
+
+            const users = await getLobbyUsers(TOKEN_1, lobbyId);
+            const userCount = users ? users.length : 0;
+            console.log(`👥 عدد اللاعبين في اللوبي: ${userCount}`);
+
+            if (userCount === 2) {
+                console.log(`✅ اللوبي ${lobbyId} يحتوي على لاعبين فقط. سيتم بدء اللعبة.`);
+                break;
+            } else {
+                console.log(`⚠️ اللوبي ${lobbyId} يحتوي على ${userCount} لاعب (متوقع 2). إلغاء هذا اللوبي...`);
+                await closeLobby(TOKEN_1, lobbyId);
+                await sleep(3000);
+                lobbyId = null;
+            }
+        } catch (error) {
+            console.error(`❌ خطأ في محاولة إنشاء اللوبي:`, error.stack || error.message);
+            if (lobbyId) await closeLobby(TOKEN_1, lobbyId);
+            await sleep(5000);
+        }
+    }
+
+    if (!lobbyId) {
+        console.log(`❌ فشل في إنشاء لوبي باعبين فقط بعد ${MAX_ATTEMPTS} محاولات.`);
+        return false;
+    }
 
     try {
-        // إنشاء المجلدات المؤقتة للمتصفحات (مرة واحدة)
-        tempDir1 = fs.mkdtempSync(path.join(os.tmpdir(), 'puppeteer-'));
-        tempDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'puppeteer-'));
-        console.log(`📁 مجلد مؤقت 1: ${tempDir1}`);
-        console.log(`📁 مجلد مؤقت 2: ${tempDir2}`);
+        await startGame(TOKEN_1, lobbyId);
+        const roundStartTime = Date.now();
 
-        // فتح المتصفحين (مرة واحدة وإعادة استخدامهما)
-        console.log("🚀 فتح المتصفحين في وضع headless...");
-        browser1 = await puppeteer.launch({
-            headless: 'new',
-            userDataDir: tempDir1,
-            args: [
-                '--disable-web-security',
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--window-size=600,600',
-                '--disable-session-crashed-bubble',
-                '--disable-features=TranslateUI'
-            ]
-        });
-        browser2 = await puppeteer.launch({
-            headless: 'new',
-            userDataDir: tempDir2,
-            args: [
-                '--disable-web-security',
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--window-size=600,600',
-                '--disable-session-crashed-bubble',
-                '--disable-features=TranslateUI'
-            ]
-        });
+        const page1 = await browser1.newPage();
+        const page2 = await browser2.newPage();
 
-        let cycleCount = 0;
+        await Promise.all([
+            navigateToLobby(page1, TOKEN_1, "الحساب الأول", lobbyId),
+            navigateToLobby(page2, TOKEN_2, "الحساب الثاني", lobbyId)
+        ]);
 
-        // الحلقة الرئيسية (غير محدودة)
-        while (true) {
-            cycleCount++;
-            console.log(`\n========== الدورة رقم ${cycleCount} ==========`);
+        console.log("⏳ انتظار 5 ثوانٍ قبل حقن البيانات...");
+        await sleep(5000);
 
-            // 1. إنشاء جلسات جديدة لكل دورة
-            const sessionHost = await createSession(TOKEN_HOST, "الحساب المنشئ");
-            if (!sessionHost) {
-                console.log("❌ فشل جلسة المنشئ، ننتظر 90 ثانية ونعيد المحاولة...");
-                await sleep(RETRY_WAIT * 1000);
-                continue;
-            }
-            const sessionGuest = await createSession(TOKEN_GUEST, "الحساب الضيف");
-            if (!sessionGuest) {
-                console.log("❌ فشل جلسة الضيف، ننتظر 90 ثانية ونعيد المحاولة...");
-                await sleep(RETRY_WAIT * 1000);
-                continue;
-            }
+        console.log("📤 حقن بيانات الحسابين...");
+        await Promise.all([
+            injectData(page1, TOKEN_1, USER_ID_1, "الحساب الأول", lobbyId),
+            injectData(page2, TOKEN_2, USER_ID_2, "الحساب الثاني", lobbyId)
+        ]);
 
-            // 2. محاولة إنشاء لوبي (حتى 25 محاولة)
-            let lobbyId = null;
-            let attempts = 0;
-            while (attempts < MAX_LOBBY_ATTEMPTS && !lobbyId) {
-                attempts++;
-                lobbyId = await createLobby(TOKEN_HOST, attempts);
-                if (!lobbyId) {
-                    console.log(`⚠️ فشلت المحاولة ${attempts}/${MAX_LOBBY_ATTEMPTS}`);
-                    await sleep(2000); // انتظار بسيط بين المحاولات
-                }
-            }
+        const autoClickInterval = startAutoClick(page2, "الحساب الثاني");
 
-            if (!lobbyId) {
-                // فشل بعد 25 محاولة
-                console.log(`❌ فشل إنشاء اللوبي بعد ${MAX_LOBBY_ATTEMPTS} محاولة، ننتظر ${RETRY_WAIT} ثانية ثم نعيد الدورة`);
-                // حذف الجلسات (اختياري)
-                await deleteSession(TOKEN_HOST, sessionHost, "الحساب المنشئ");
-                await deleteSession(TOKEN_GUEST, sessionGuest, "الحساب الضيف");
-                await sleep(RETRY_WAIT * 1000);
-                continue; // العودة إلى بداية الحلقة
-            }
+        console.log(`⏳ انتظار ${WAIT_TIME} ثانية (${WAIT_TIME/60} دقيقة)...`);
+        await sleep(WAIT_TIME * 1000);
 
-            // 3. انضمام الضيف
-            const joined = await joinLobby(TOKEN_GUEST, lobbyId);
-            if (!joined) {
-                console.log("❌ فشل انضمام الضيف، ننتظر 90 ثانية ونعيد الدورة");
-                await deleteSession(TOKEN_HOST, sessionHost, "الحساب المنشئ");
-                await deleteSession(TOKEN_GUEST, sessionGuest, "الحساب الضيف");
-                await sleep(RETRY_WAIT * 1000);
-                continue;
-            }
+        clearInterval(autoClickInterval);
+        console.log(`[الحساب الثاني] 🛑 تم إيقاف النقر التلقائي.`);
 
-            // 4. بدء اللعبة
-            const started = await startGame(TOKEN_HOST, lobbyId);
-            if (!started) {
-                console.log("❌ فشل بدء اللعبة، ننتظر 90 ثانية ونعيد الدورة");
-                await deleteSession(TOKEN_HOST, sessionHost, "الحساب المنشئ");
-                await deleteSession(TOKEN_GUEST, sessionGuest, "الحساب الضيف");
-                await sleep(RETRY_WAIT * 1000);
-                continue;
-            }
+        await closeWindows(page1, page2);
 
-            // 5. فتح صفحات جديدة في المتصفحين (نغلق القديمة إن وجدت)
-            // نفتح صفحة جديدة لكل متصفح
-            const page1 = await browser1.newPage();
-            const page2 = await browser2.newPage();
-            await page1.setViewport({ width: 600, height: 600 });
-            await page2.setViewport({ width: 600, height: 600 });
-
-            // 6. الانتقال إلى اللوبي
-            await Promise.all([
-                navigateToLobby(page1, TOKEN_HOST, "الحساب المنشئ", lobbyId),
-                navigateToLobby(page2, TOKEN_GUEST, "الحساب الضيف", lobbyId)
-            ]);
-
-            console.log("⏳ انتظار 5 ثوانٍ قبل حقن البيانات...");
-            await sleep(5000);
-
-            // 7. حقن البيانات
-            console.log("📤 حقن البيانات...");
-            await Promise.all([
-                injectData(page1, TOKEN_HOST, USER_ID_HOST, "الحساب المنشئ", lobbyId),
-                injectData(page2, TOKEN_GUEST, USER_ID_GUEST, "الحساب الضيف", lobbyId)
-            ]);
-
-            console.log("⏳ انتظار 3 ثوانٍ بعد الحقن لضمان ظهور اللعبة...");
-            await sleep(3000);
-
-            // 8. بدء السحب المتكرر لمدة WAIT_TIME (90 ثانية)
-            console.log(`🔄 بدء السحب كل ${DRAG_INTERVAL/1000} ثانية لمدة ${WAIT_TIME} ثانية...`);
-            stopDragging = false;
-            const dragStartTime = Date.now();
-            // نستخدم setInterval مع شرط الإيقاف
-            dragInterval = setInterval(async () => {
-                if (stopDragging) return;
-                await performDrag(page2, "الحساب الضيف");
-            }, DRAG_INTERVAL);
-
-            // انتظار المدة المحددة
-            await sleep(WAIT_TIME * 1000);
-
-            // 9. إيقاف التكرار
-            stopDragging = true;
-            if (dragInterval) {
-                clearInterval(dragInterval);
-                dragInterval = null;
-            }
-            console.log("⏹️ تم إيقاف التكرار.");
-
-            // 10. إغلاق الصفحات (بدون خروج) وعدم حذف الجلسات (سنعيد استخدامها؟)
-            // لكننا سنغلق الصفحات فقط
-            await page1.close();
-            await page2.close();
-            console.log("🗑️ تم إغلاق الصفحات.");
-
-            // 11. حذف الجلسات (ننهيها نظيفاً)
-            await deleteSession(TOKEN_HOST, sessionHost, "الحساب المنشئ");
-            await deleteSession(TOKEN_GUEST, sessionGuest, "الحساب الضيف");
-            console.log("✅ تم إنهاء الجلسات.");
-
-            // 12. ننتظر قليلاً قبل الدورة التالية (اختياري)
-            await sleep(3000);
-            // الدورة تنتهي، ستبدأ من جديد
+        const elapsed = (Date.now() - roundStartTime) / 1000;
+        const remaining = Math.max(0, 120 - elapsed);
+        if (remaining > 0) {
+            console.log(`⏳ انتظار ${remaining.toFixed(1)} ثانية حتى بدء الجولة التالية...`);
+            await sleep(remaining * 1000);
         }
 
-    } catch (e) {
-        console.error("❌ خطأ رئيسي:", e.message);
-        console.error(e.stack);
-        cleanup();
-        process.exit(1);
+        console.log("⏳ انتظار 5 ثوانٍ قبل الجولة التالية...");
+        await sleep(5000);
+
+        return true;
+    } catch (error) {
+        console.error(`❌ خطأ في الجولة ${roundNumber}:`, error.stack || error.message);
+        return false;
     }
 }
 
-main();
+// ===================== MAIN =====================
+async function main() {
+    console.log(`🚀 بدء البوت (مدة الانتظار: ${WAIT_TIME} ثانية)`);
+
+    let browser1, browser2;
+
+    // ===== حلقة إعادة محاولة للتهيئة (جلسات + متصفحات) =====
+    while (true) {
+        try {
+            const session1 = await initializeAccountSession(TOKEN_1, "الحساب الأول");
+            if (!session1) {
+                console.error('❌ فشل جلسة الحساب الأول، إعادة المحاولة بعد 60 ثانية');
+                await sleep(60000);
+                continue;
+            }
+            const session2 = await initializeAccountSession(TOKEN_2, "الحساب الثاني");
+            if (!session2) {
+                console.error('❌ فشل جلسة الحساب الثاني، إعادة المحاولة بعد 60 ثانية');
+                await sleep(60000);
+                continue;
+            }
+
+            console.log("🚀 فتح المتصفحين (ثابتان طوال الجلسة) بحجم 600x600...");
+            browser1 = await puppeteer.launch({
+                headless: true,
+                userDataDir: USER_DATA_DIR_1,
+                args: ['--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox', '--window-size=600,600']
+            });
+            browser2 = await puppeteer.launch({
+                headless: true,
+                userDataDir: USER_DATA_DIR_2,
+                args: ['--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox', '--window-size=600,600']
+            });
+
+            break;
+        } catch (initError) {
+            console.error('❌ خطأ فادح أثناء التهيئة:', initError.stack || initError.message);
+            try { if (browser1) await browser1.close(); } catch (e) {}
+            try { if (browser2) await browser2.close(); } catch (e) {}
+            console.log('⏳ انتظار 60 ثانية ثم إعادة محاولة التهيئة...');
+            await sleep(60000);
+        }
+    }
+
+    let round = 1;
+    while (true) {
+        try {
+            const success = await runRound(round, browser1, browser2);
+            if (!success) {
+                console.log(`⚠️ فشلت الجولة ${round}. انتظار ${RETRY_DELAY} ثانية ثم المحاولة مرة أخرى...`);
+                await sleep(RETRY_DELAY * 1000);
+            }
+            round++;
+        } catch (error) {
+            console.error(`❌ خطأ غير متوقع:`, error.stack || error.message);
+            console.log(`⏳ انتظار ${RETRY_DELAY} ثانية ثم المحاولة مرة أخرى...`);
+            await sleep(RETRY_DELAY * 1000);
+        }
+    }
+}
+
+main().catch((err) => {
+    console.error('❌ خطأ فادح في main():', err.stack || err.message);
+});
