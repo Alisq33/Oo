@@ -9,10 +9,20 @@ const USER_ID_HOST = 80055399;
 const TOKEN_GUEST = "WE-e8e2272d-962c-493a-8e99-afed2959e588";
 const USER_ID_GUEST = 51660277;
 const GROUP_ID = 18432094;
-const WAIT_TIME = 90; // 90 ثانية
-const DRAG_INTERVAL = 3000; // 3 ثوان بين كل سحب
-const MAX_LOBBY_ATTEMPTS = 25;
-const RETRY_WAIT = 90; // انتظار 90 ثانية بعد فشل المحاولات
+
+const WAIT_TIME = 90;          // مدة السحب (90 ثانية)
+const DRAG_INTERVAL = 3000;    // كل 3 ثوان بين كل سحب
+const MAX_LOBBY_ATTEMPTS = 25; // عدد محاولات إنشاء اللوبي
+const RETRY_WAIT = 90;         // انتظار 90 ثانية بعد الفشل
+
+// ===== إحداثيات السحب =====
+// 🟢 الحساب الضيف (الثاني): من يمين-أعلى إلى يسار-أسفل
+const GUEST_DRAG_FROM = { x: 300, y: 338 };
+const GUEST_DRAG_TO   = { x: 264, y: 470 };
+
+// 🔵 الحساب المنشئ (الأول): الاتجاه المعاكس تماماً
+const HOST_DRAG_FROM  = { x: 264, y: 470 };
+const HOST_DRAG_TO    = { x: 300, y: 338 };
 
 // ===== رؤوس HTTP المحدثة للإصدار 4.8.14 =====
 const baseHeaders = {
@@ -20,7 +30,7 @@ const baseHeaders = {
     "Connection": "keep-alive",
     "experience-id": "9",
     "experience-build-type": "release",
-    "experience-build-version": "4.8.14", // ← تم التحديث
+    "experience-build-version": "4.8.14",
     "language-id": "1",
     "user-agent": "Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/150.0.7871.124 Mobile Safari/537.36",
     "content-type": "application/json",
@@ -31,7 +41,7 @@ const baseHeaders = {
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// ===== دالة حذف المجلد المؤقت =====
+// ===== حذف المجلد المؤقت =====
 function deleteTempDir(dir) {
     try {
         if (fs.existsSync(dir)) {
@@ -50,7 +60,7 @@ async function createSession(token, accountName) {
     const body = {
         experienceId: 9,
         experienceBuildType: "release",
-        experienceBuildVersion: "4.8.14", // ← تم التحديث
+        experienceBuildVersion: "4.8.14",
         platform: "android",
         contextType: "group",
         contextId: GROUP_ID,
@@ -108,7 +118,7 @@ async function createLobby(token, attempt) {
         displayName: "ㅤ⚽ Penalty Shootout ㅤ",
         data: "",
         ownerUserData: "",
-        ownerPlayerIp: "0.0.0.0" // ← استخدام 0.0.0.0 كما في الكود الجديد
+        ownerPlayerIp: "0.0.0.0"
     };
     try {
         const res = await fetch("https://experience.palringo.com/lobby", {
@@ -148,7 +158,6 @@ async function joinLobby(token, lobbyId) {
 async function startGame(token, lobbyId) {
     const headers = { ...baseHeaders, "authorization": `Bearer ${token}`, "content-length": "0" };
     try {
-        // في الإصدار الجديد، إغلاق اللوبي هو ما يبدأ اللعبة
         await fetch(`https://experience.palringo.com/lobby/id/${lobbyId}/close`, { method: "POST", headers });
         console.log(`✅ تم بدء اللوبي ${lobbyId}`);
         return true;
@@ -166,7 +175,6 @@ async function navigateToLobby(page, token, accountName, lobbyId) {
         'Origin': 'https://experiences.wolfservices.production.wolf.live',
         'X-Requested-With': 'com.palringo.android'
     });
-    // ← تحديث رابط اللعبة إلى الإصدار 4.8.14
     const url = `https://experiences.wolfservices.production.wolf.live/experience/golden_goal/4.8.14/index.html?groupId=${GROUP_ID}&lobbyId=${lobbyId}`;
     console.log(`[${accountName}] 🌐 فتح ${url}`);
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
@@ -174,10 +182,8 @@ async function navigateToLobby(page, token, accountName, lobbyId) {
     console.log(`[${accountName}] ✅ تم تحميل الصفحة.`);
 }
 
-// ===== حقن البيانات (محدث ليتوافق مع البنية الجديدة) =====
 async function injectData(page, token, userId, accountName, lobbyId) {
     await page.evaluate((token, userId, groupId, lobbyId) => {
-        // محاكاة Gamepad (كما في الكود القديم، مع الحفاظ على التوافق)
         window.Gamepad = {
             _listeners: {},
             on: function(event, cb) {
@@ -215,7 +221,6 @@ async function injectData(page, token, userId, accountName, lobbyId) {
             loadExternalUrl: function(){}
         };
 
-        // محاكاة WebViewChannel (كما في الكود الجديد)
         window.WebViewChannel = {
             postMessage: function(message) {
                 try {
@@ -230,7 +235,6 @@ async function injectData(page, token, userId, accountName, lobbyId) {
             }
         };
 
-        // استخدام بنية userData الجديدة (كما في الكود الذي يعمل)
         const userData = {
             platform: 'android',
             contextType: 'group',
@@ -243,30 +247,29 @@ async function injectData(page, token, userId, accountName, lobbyId) {
             lobbyId: lobbyId
         };
 
-        // إرسال البيانات عبر postMessage (الطريقة الأساسية في الإصدار الجديد)
         window.postMessage({ type: 'setUserData', args: userData }, '*');
 
-        // أيضاً عبر Gamepad للتوافق
         if (window.Gamepad && window.Gamepad.localEmit) {
             window.Gamepad.localEmit('setUserData', userData);
             window.Gamepad.emit('setUserData', userData);
         }
 
-        console.log('✅ تم إرسال setUserData (النمط الجديد)');
+        console.log('✅ تم إرسال setUserData');
     }, token, userId, GROUP_ID, lobbyId);
 
     await sleep(1000);
     console.log(`[${accountName}] ✅ تم حقن البيانات.`);
 }
 
-async function performDrag(page, accountName) {
+// ===== دالة السحب (تدعم الاتجاهين) =====
+async function performDrag(page, accountName, fromX, fromY, toX, toY) {
     try {
-        console.log(`[${accountName}] 🖱️ السحب من (300,338) إلى (264,470)...`);
-        await page.mouse.move(300, 338);
+        console.log(`[${accountName}] 🖱️ السحب من (${fromX},${fromY}) إلى (${toX},${toY})...`);
+        await page.mouse.move(fromX, fromY);
         await sleep(200);
         await page.mouse.down();
         await sleep(300);
-        await page.mouse.move(264, 470, { steps: 15 });
+        await page.mouse.move(toX, toY, { steps: 15 });
         await sleep(300);
         await page.mouse.up();
         console.log(`[${accountName}] ✅ تم السحب.`);
@@ -279,11 +282,13 @@ async function performDrag(page, accountName) {
 async function main() {
     let browser1, browser2;
     let tempDir1, tempDir2;
-    let dragInterval = null;
+    let dragIntervalGuest = null;
+    let dragIntervalHost = null;
     let stopDragging = false;
 
     const cleanup = () => {
-        if (dragInterval) clearInterval(dragInterval);
+        if (dragIntervalGuest) clearInterval(dragIntervalGuest);
+        if (dragIntervalHost) clearInterval(dragIntervalHost);
         if (tempDir1) deleteTempDir(tempDir1);
         if (tempDir2) deleteTempDir(tempDir2);
         try { if (browser1) browser1.close(); } catch (e) {}
@@ -331,21 +336,21 @@ async function main() {
             cycleCount++;
             console.log(`\n========== الدورة رقم ${cycleCount} ==========`);
 
-            // 1. إنشاء جلسات
+            // 1. إنشاء الجلسات
             const sessionHost = await createSession(TOKEN_HOST, "الحساب المنشئ");
             if (!sessionHost) {
-                console.log("❌ فشل جلسة المنشئ، ننتظر...");
+                console.log("❌ فشل جلسة المنشئ، ننتظر 90 ثانية...");
                 await sleep(RETRY_WAIT * 1000);
                 continue;
             }
             const sessionGuest = await createSession(TOKEN_GUEST, "الحساب الضيف");
             if (!sessionGuest) {
-                console.log("❌ فشل جلسة الضيف، ننتظر...");
+                console.log("❌ فشل جلسة الضيف، ننتظر 90 ثانية...");
                 await sleep(RETRY_WAIT * 1000);
                 continue;
             }
 
-            // 2. إنشاء لوبي
+            // 2. إنشاء لوبي (حتى 25 محاولة)
             let lobbyId = null;
             let attempts = 0;
             while (attempts < MAX_LOBBY_ATTEMPTS && !lobbyId) {
@@ -410,23 +415,46 @@ async function main() {
             console.log("⏳ انتظار 3 ثوانٍ بعد الحقن...");
             await sleep(3000);
 
-            // 8. السحب المتكرر
-            console.log(`🔄 بدء السحب كل ${DRAG_INTERVAL/1000} ثانية لمدة ${WAIT_TIME} ثانية...`);
+            // 8. بدء السحب المتعاكس للحسابين
+            console.log(`🔄 بدء السحب للحسابين كل ${DRAG_INTERVAL/1000} ثوانٍ لمدة ${WAIT_TIME} ثانية...`);
+            console.log(`   🟢 الضيف:  (${GUEST_DRAG_FROM.x},${GUEST_DRAG_FROM.y}) → (${GUEST_DRAG_TO.x},${GUEST_DRAG_TO.y})`);
+            console.log(`   🔵 المنشئ: (${HOST_DRAG_FROM.x},${HOST_DRAG_FROM.y}) → (${HOST_DRAG_TO.x},${HOST_DRAG_TO.y})`);
+
             stopDragging = false;
-            dragInterval = setInterval(async () => {
+
+            // سحب الحساب الضيف (الأول في التنفيذ)
+            dragIntervalGuest = setInterval(async () => {
                 if (stopDragging) return;
-                await performDrag(page2, "الحساب الضيف");
+                await performDrag(
+                    page2,
+                    "الحساب الضيف",
+                    GUEST_DRAG_FROM.x, GUEST_DRAG_FROM.y,
+                    GUEST_DRAG_TO.x,   GUEST_DRAG_TO.y
+                );
             }, DRAG_INTERVAL);
 
+            // سحب الحساب المنشئ (بعد تأخير بسيط لعدم التعارض)
+            dragIntervalHost = setInterval(async () => {
+                if (stopDragging) return;
+                await performDrag(
+                    page1,
+                    "الحساب المنشئ",
+                    HOST_DRAG_FROM.x, HOST_DRAG_FROM.y,
+                    HOST_DRAG_TO.x,   HOST_DRAG_TO.y
+                );
+            }, DRAG_INTERVAL);
+
+            // تأخير نصف الفترة لتبادل السحب بين الحسابين
+            await sleep(DRAG_INTERVAL / 2);
+
+            // انتظار المدة المحددة
             await sleep(WAIT_TIME * 1000);
 
             // 9. إيقاف التكرار
             stopDragging = true;
-            if (dragInterval) {
-                clearInterval(dragInterval);
-                dragInterval = null;
-            }
-            console.log("⏹️ تم إيقاف التكرار.");
+            if (dragIntervalGuest) { clearInterval(dragIntervalGuest); dragIntervalGuest = null; }
+            if (dragIntervalHost)  { clearInterval(dragIntervalHost);  dragIntervalHost  = null; }
+            console.log("⏹️ تم إيقاف السحب للحسابين.");
 
             // 10. إغلاق الصفحات
             await page1.close();
