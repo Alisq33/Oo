@@ -1,7 +1,11 @@
-const puppeteer = require('puppeteer');
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
+const puppeteer = require("puppeteer");
+const path = require("path");
+const fs = require("fs");
+const os = require("os");
+
+// ============================================================
+// بيانات الحسابات
+// ============================================================
 
 const TOKEN_HOST = "576a2902-db16-4e9f-b503-3da6ba4bf78a";
 const USER_ID_HOST = 80055399;
@@ -12,7 +16,7 @@ const USER_ID_GUEST = 51660277;
 const GROUP_ID = 18432094;
 
 // ============================================================
-// إعدادات Golden Goal
+// إعدادات Golden Goal 4.8.14
 // ============================================================
 
 const EXPERIENCE_ID = 9;
@@ -34,14 +38,14 @@ const RETRY_WAIT = 90;
 // ============================================================
 
 if (!TOKEN_HOST) {
-    console.error("❌ TOKEN_HOST غير موجود.");
+    console.error("❌ TOKEN_HOST غير موجود");
     console.error("استخدم:");
     console.error("set TOKEN_HOST=YOUR_HOST_TOKEN");
     process.exit(1);
 }
 
 if (!TOKEN_GUEST) {
-    console.error("❌ TOKEN_GUEST غير موجود.");
+    console.error("❌ TOKEN_GUEST غير موجود");
     console.error("استخدم:");
     console.error("set TOKEN_GUEST=YOUR_GUEST_TOKEN");
     process.exit(1);
@@ -52,22 +56,18 @@ if (!TOKEN_GUEST) {
 // ============================================================
 
 const USER_AGENT =
-    'Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) ' +
-    'AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 ' +
-    'Chrome/150.0.7871.124 Mobile Safari/537.36';
+    "Mozilla/5.0 (Linux; Android 13; NTH-NX9 Build/HONORNTH-N29; wv) " +
+    "AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 " +
+    "Chrome/150.0.7871.124 Mobile Safari/537.36";
 
 // ============================================================
 // Headers
 // ============================================================
 
 const baseHeaders = {
-    "Host": "experience.palringo.com",
-    "Connection": "keep-alive",
-
     "experience-id": String(EXPERIENCE_ID),
     "experience-build-type": EXPERIENCE_BUILD_TYPE,
     "experience-build-version": EXPERIENCE_VERSION,
-
     "language-id": LANGUAGE_ID,
 
     "user-agent": USER_AGENT,
@@ -100,8 +100,7 @@ function deleteTempDir(dir) {
         }
     } catch (e) {
         console.warn(
-            `⚠️ فشل حذف المجلد المؤقت ${dir}:`,
-            e.message
+            `⚠️ فشل حذف المجلد المؤقت: ${e.message}`
         );
     }
 }
@@ -113,31 +112,25 @@ function deleteTempDir(dir) {
 async function createSession(token, accountName) {
 
     console.log(
-        `[${accountName}] جاري إنشاء جلسة ${EXPERIENCE_VERSION}...`
+        `[${accountName}] 🔐 إنشاء جلسة ${EXPERIENCE_VERSION}...`
     );
 
     const headers = {
         ...baseHeaders,
-        "authorization": `Bearer ${token}`
+        authorization: `Bearer ${token}`
     };
 
     const body = {
         experienceId: EXPERIENCE_ID,
-
-        experienceBuildType:
-            EXPERIENCE_BUILD_TYPE,
-
-        experienceBuildVersion:
-            EXPERIENCE_VERSION,
+        experienceBuildType: EXPERIENCE_BUILD_TYPE,
+        experienceBuildVersion: EXPERIENCE_VERSION,
 
         platform: "android",
 
         contextType: "group",
-
         contextId: GROUP_ID,
 
         screenState: "full",
-
         screenStatePreviously: "full",
 
         data: ""
@@ -155,7 +148,10 @@ async function createSession(token, accountName) {
         );
 
         if (!res.ok) {
-            throw new Error(`HTTP ${res.status}`);
+            const text = await res.text();
+            throw new Error(
+                `HTTP ${res.status} ${text}`
+            );
         }
 
         const data = await res.json();
@@ -163,7 +159,9 @@ async function createSession(token, accountName) {
         const sessionToken = data.token;
 
         if (!sessionToken) {
-            throw new Error("لم يرجع السيرفر session token");
+            throw new Error(
+                "السيرفر لم يرجع session token"
+            );
         }
 
         // تفعيل الجلسة
@@ -177,8 +175,10 @@ async function createSession(token, accountName) {
         );
 
         if (!activateRes.ok) {
+            const text = await activateRes.text();
+
             throw new Error(
-                `فشل تفعيل الجلسة HTTP ${activateRes.status}`
+                `فشل تفعيل الجلسة HTTP ${activateRes.status} ${text}`
             );
         }
 
@@ -191,7 +191,7 @@ async function createSession(token, accountName) {
     } catch (e) {
 
         console.error(
-            `[${accountName}] ❌ خطأ في الجلسة:`,
+            `[${accountName}] ❌ خطأ في إنشاء الجلسة:`,
             e.message
         );
 
@@ -200,7 +200,7 @@ async function createSession(token, accountName) {
 }
 
 // ============================================================
-// حذف الجلسة
+// حذف Experience Session
 // ============================================================
 
 async function deleteSession(
@@ -215,7 +215,7 @@ async function deleteSession(
 
     const headers = {
         ...baseHeaders,
-        "authorization": `Bearer ${token}`
+        authorization: `Bearer ${token}`
     };
 
     try {
@@ -238,13 +238,13 @@ async function deleteSession(
         }
 
         console.warn(
-            `[${accountName}] ⚠️ حذف الجلسة أعاد HTTP ${res.status}`
+            `[${accountName}] ⚠️ DELETE أعاد HTTP ${res.status}`
         );
 
     } catch (e) {
 
         console.error(
-            `[${accountName}] ❌ خطأ أثناء حذف الجلسة:`,
+            `[${accountName}] ❌ خطأ في حذف الجلسة:`,
             e.message
         );
     }
@@ -253,14 +253,18 @@ async function deleteSession(
 }
 
 // ============================================================
-// إنشاء Lobby
+// إنشاء Lobby - مطابق لطلب 4.8.14 الذي استخرجته
 // ============================================================
 
 async function createLobby(token, attempt) {
 
+    console.log(
+        `🎮 محاولة إنشاء Lobby ${attempt}/${MAX_LOBBY_ATTEMPTS}`
+    );
+
     const headers = {
         ...baseHeaders,
-        "authorization": `Bearer ${token}`
+        authorization: `Bearer ${token}`
     };
 
     const body = {
@@ -272,14 +276,14 @@ async function createLobby(token, attempt) {
 
         access: "public",
 
-        displayName: "ㅤ⚽ Penalty Shootout ㅤ",
+        displayName: "ㅤ🐈⬛ ㅤ",
 
         data: "",
 
         ownerUserData: "",
 
-        ownerPlayerIp:
-            "2001:16a2:3006:9b00:a1a3:23e2:1385:b71b"
+        // ضع قيمة صحيحة إذا كان الـAPI يتطلبها
+        ownerPlayerIp: "YOUR_PLAYER_IP"
     };
 
     try {
@@ -294,22 +298,55 @@ async function createLobby(token, attempt) {
         );
 
         if (!res.ok) {
-            throw new Error(`HTTP ${res.status}`);
+
+            const errorText =
+                await res.text();
+
+            throw new Error(
+                `HTTP ${res.status} - ${errorText}`
+            );
         }
 
-        const data = await res.json();
+        const lobby = await res.json();
 
         console.log(
-            `✅ تم إنشاء اللوبي ${data.id} ` +
-            `(محاولة ${attempt})`
+            "========================================"
         );
 
-        return data.id;
+        console.log(
+            `✅ تم إنشاء Lobby بنجاح`
+        );
+
+        console.log(
+            `🆔 Lobby ID: ${lobby.id}`
+        );
+
+        console.log(
+            `🎮 Experience ID: ${lobby.experienceId}`
+        );
+
+        console.log(
+            `📦 Version: ${lobby.experienceBuildVersion}`
+        );
+
+        console.log(
+            `📌 State: ${lobby.state}`
+        );
+
+        console.log(
+            `👑 Owner: ${lobby.users?.[0]?.user?.id ?? "غير معروف"}`
+        );
+
+        console.log(
+            "========================================"
+        );
+
+        return lobby.id;
 
     } catch (e) {
 
         console.error(
-            `❌ فشل إنشاء اللوبي (محاولة ${attempt}):`,
+            `❌ فشل إنشاء Lobby (${attempt}):`,
             e.message
         );
 
@@ -318,21 +355,23 @@ async function createLobby(token, attempt) {
 }
 
 // ============================================================
-// انضمام الضيف
+// Join Lobby
 // ============================================================
 
 async function joinLobby(token, lobbyId) {
 
+    console.log(
+        `👤 محاولة إدخال الحساب الضيف إلى ${lobbyId}...`
+    );
+
     const headers = {
         ...baseHeaders,
-        "authorization": `Bearer ${token}`
+        authorization: `Bearer ${token}`
     };
 
     const body = {
         data: "",
-
-        playerIp:
-            "2001:16a2:3006:9b00:a1a3:23e2:1385:b71b"
+        playerIp: "YOUR_PLAYER_IP"
     };
 
     try {
@@ -349,20 +388,23 @@ async function joinLobby(token, lobbyId) {
         if (res.status === 200) {
 
             console.log(
-                `✅ الحساب الضيف انضم إلى اللوبي ${lobbyId}`
+                `✅ الحساب الضيف انضم إلى ${lobbyId}`
             );
 
             return true;
         }
 
+        const errorText =
+            await res.text();
+
         console.error(
-            `❌ فشل انضمام الضيف HTTP ${res.status}`
+            `❌ فشل Join HTTP ${res.status}: ${errorText}`
         );
 
     } catch (e) {
 
         console.error(
-            "❌ خطأ في الانضمام:",
+            "❌ خطأ في Join:",
             e.message
         );
     }
@@ -371,24 +413,24 @@ async function joinLobby(token, lobbyId) {
 }
 
 // ============================================================
-// بدء اللعبة
+// Start Lobby
 // ============================================================
 
 async function startGame(token, lobbyId) {
 
+    console.log(
+        `🎮 محاولة بدء Lobby ${lobbyId}...`
+    );
+
     const headers = {
         ...baseHeaders,
-
-        "authorization":
-            `Bearer ${token}`,
-
-        "content-length":
-            "0"
+        authorization: `Bearer ${token}`,
+        "content-length": "0"
     };
 
     try {
 
-        const startRes = await fetch(
+        const res = await fetch(
             `https://experience.palringo.com/lobby/id/${lobbyId}/start`,
             {
                 method: "POST",
@@ -397,29 +439,21 @@ async function startGame(token, lobbyId) {
         );
 
         console.log(
-            `🎮 Start Lobby HTTP ${startRes.status}`
+            `🎮 Start HTTP ${res.status}`
         );
 
-        if (!startRes.ok) {
+        if (!res.ok) {
+
+            const errorText =
+                await res.text();
+
             throw new Error(
-                `فشل start HTTP ${startRes.status}`
+                `Start HTTP ${res.status}: ${errorText}`
             );
         }
 
-        const closeRes = await fetch(
-            `https://experience.palringo.com/lobby/id/${lobbyId}/close`,
-            {
-                method: "POST",
-                headers
-            }
-        );
-
         console.log(
-            `🔒 Close Lobby HTTP ${closeRes.status}`
-        );
-
-        console.log(
-            `✅ تم بدء اللوبي ${lobbyId}`
+            `✅ تم إرسال Start للـLobby ${lobbyId}`
         );
 
         return true;
@@ -427,7 +461,7 @@ async function startGame(token, lobbyId) {
     } catch (e) {
 
         console.error(
-            "❌ خطأ في بدء اللعبة:",
+            "❌ خطأ في Start:",
             e.message
         );
 
@@ -446,14 +480,16 @@ async function navigateToLobby(
     lobbyId
 ) {
 
-    await page.setUserAgent(USER_AGENT);
+    await page.setUserAgent(
+        USER_AGENT
+    );
 
     await page.setExtraHTTPHeaders({
 
-        "Authorization":
+        Authorization:
             `Bearer ${token}`,
 
-        "Origin":
+        Origin:
             "https://experiences.wolfservices.production.wolf.live",
 
         "X-Requested-With":
@@ -464,25 +500,28 @@ async function navigateToLobby(
         `${GAME_URL}?groupId=${GROUP_ID}&lobbyId=${lobbyId}`;
 
     console.log(
-        `[${accountName}] 🌐 فتح اللعبة:`
+        `[${accountName}] 🌐 فتح: ${url}`
     );
 
-    console.log(url);
+    await page.goto(
+        url,
+        {
+            waitUntil: "networkidle2",
+            timeout: 60000
+        }
+    );
 
-    await page.goto(url, {
-        waitUntil: "networkidle2",
-        timeout: 60000
-    });
-
-    await page.setCacheEnabled(true);
+    await page.setCacheEnabled(
+        true
+    );
 
     console.log(
-        `[${accountName}] ✅ تم تحميل ${EXPERIENCE_VERSION}`
+        `[${accountName}] ✅ تم تحميل Golden Goal ${EXPERIENCE_VERSION}`
     );
 }
 
 // ============================================================
-// حقن بيانات الحساب
+// حقن setUserData
 // ============================================================
 
 async function injectData(
@@ -502,116 +541,132 @@ async function injectData(
         ) => {
 
             // ==================================================
-            // Gamepad compatibility layer
+            // Gamepad
             // ==================================================
 
             window.Gamepad = {
 
                 _listeners: {},
 
-                on: function(event, cb) {
+                on(event, callback) {
 
-                    if (!this._listeners[event]) {
+                    if (
+                        !this._listeners[event]
+                    ) {
                         this._listeners[event] = [];
                     }
 
-                    this._listeners[event].push(cb);
+                    this._listeners[event].push(
+                        callback
+                    );
                 },
 
-                emit: function(event, data) {
+                emit(event, data) {
 
                     try {
 
-                        if (event === "setUserData") {
+                        if (
+                            event === "setUserData"
+                        ) {
 
                             const parsed =
                                 typeof data === "string"
                                     ? JSON.parse(data)
                                     : data;
 
-                            window.__userData = parsed;
+                            window.__userData =
+                                parsed;
 
-                            setTimeout(() => {
+                            setTimeout(
+                                () => {
 
-                                window.postMessage(
-                                    {
-                                        type:
-                                            "experienceStateChanged",
+                                    window.postMessage(
+                                        {
+                                            type:
+                                                "experienceStateChanged",
 
-                                        args: {
-                                            experienceState:
-                                                "ready"
-                                        }
-                                    },
-                                    "*"
-                                );
+                                            args: {
+                                                experienceState:
+                                                    "ready"
+                                            }
+                                        },
+                                        "*"
+                                    );
 
-                            }, 500);
+                                },
+                                500
+                            );
                         }
 
                     } catch (e) {
 
                         console.warn(
-                            "Gamepad.emit error:",
+                            "Gamepad.emit:",
                             e
                         );
                     }
                 },
 
-                localEmit: function(event, data) {
+                localEmit(event, data) {
 
                     try {
 
-                        if (event === "setUserData") {
+                        if (
+                            event === "setUserData"
+                        ) {
 
                             const parsed =
                                 typeof data === "string"
                                     ? JSON.parse(data)
                                     : data;
 
-                            window.__userData = parsed;
+                            window.__userData =
+                                parsed;
 
-                            setTimeout(() => {
+                            setTimeout(
+                                () => {
 
-                                window.postMessage(
-                                    {
-                                        type:
-                                            "experienceStateChanged",
+                                    window.postMessage(
+                                        {
+                                            type:
+                                                "experienceStateChanged",
 
-                                        args: {
-                                            experienceState:
-                                                "ready"
-                                        }
-                                    },
-                                    "*"
-                                );
+                                            args: {
+                                                experienceState:
+                                                    "ready"
+                                            }
+                                        },
+                                        "*"
+                                    );
 
-                            }, 500);
+                                },
+                                500
+                            );
                         }
 
                     } catch (e) {
 
                         console.warn(
-                            "Gamepad.localEmit error:",
+                            "Gamepad.localEmit:",
                             e
                         );
                     }
                 },
 
-                showKeyboard: function() {},
-                hideKeyboard: function() {},
-                setKeyboardEnabled: function() {},
+                showKeyboard() {},
+                hideKeyboard() {},
+                setKeyboardEnabled() {},
 
-                showPane: function() {},
-                hidePane: function() {},
-                setPaneEnabled: function() {},
+                showPane() {},
+                hidePane() {},
+                setPaneEnabled() {},
 
-                openPopup: function() {},
-                openPopupWithActions: function() {},
+                openPopup() {},
+                openPopupWithActions() {},
 
-                requestInGamePurchase: function() {},
+                requestInGamePurchase() {},
 
-                loadExternalUrl: function() {}
+                loadExternalUrl() {}
             };
 
             // ==================================================
@@ -620,7 +675,7 @@ async function injectData(
 
             window.WebViewChannel = {
 
-                postMessage: function(message) {
+                postMessage(message) {
 
                     try {
 
@@ -635,28 +690,31 @@ async function injectData(
                             window.__userData =
                                 data.args;
 
-                            setTimeout(() => {
+                            setTimeout(
+                                () => {
 
-                                window.postMessage(
-                                    {
-                                        type:
-                                            "experienceStateChanged",
+                                    window.postMessage(
+                                        {
+                                            type:
+                                                "experienceStateChanged",
 
-                                        args: {
-                                            experienceState:
-                                                "ready"
-                                        }
-                                    },
-                                    "*"
-                                );
+                                            args: {
+                                                experienceState:
+                                                    "ready"
+                                            }
+                                        },
+                                        "*"
+                                    );
 
-                            }, 500);
+                                },
+                                500
+                            );
                         }
 
                     } catch (e) {
 
                         console.warn(
-                            "WebViewChannel error:",
+                            "WebViewChannel:",
                             e
                         );
                     }
@@ -664,14 +722,17 @@ async function injectData(
             };
 
             // ==================================================
-            // نفس البنية التي ثبت أنها تعمل في 4.8.14
+            // بيانات الحساب
+            // نفس البنية التي اختبرتها على 4.8.14
             // ==================================================
 
             const userData = {
 
-                platform: "android",
+                platform:
+                    "android",
 
-                contextType: "group",
+                contextType:
+                    "group",
 
                 contextID:
                     groupId.toString(),
@@ -682,9 +743,11 @@ async function injectData(
                 expSessionToken:
                     token,
 
-                externalLink: "",
+                externalLink:
+                    "",
 
-                launchData: "",
+                launchData:
+                    "",
 
                 userId:
                     userId,
@@ -694,18 +757,22 @@ async function injectData(
             };
 
             console.log(
-                "📤 إرسال setUserData إلى Unity"
+                "📤 إرسال setUserData"
             );
 
+            // الرسالة الأساسية
             window.postMessage(
                 {
-                    type: "setUserData",
-                    args: userData
+                    type:
+                        "setUserData",
+
+                    args:
+                        userData
                 },
                 "*"
             );
 
-            // نفس التوافق المستخدم في الكود القديم
+            // التوافق القديم
             window.Gamepad.localEmit(
                 "setUserData",
                 userData
@@ -727,7 +794,7 @@ async function injectData(
     await sleep(1000);
 
     console.log(
-        `[${accountName}] ✅ تم حقن setUserData`
+        `[${accountName}] ✅ تم إرسال setUserData`
     );
 }
 
@@ -743,7 +810,7 @@ async function performDrag(
     try {
 
         console.log(
-            `[${accountName}] 🖱️ السحب من (300,338) إلى (264,470)...`
+            `[${accountName}] 🖱️ Drag`
         );
 
         await page.mouse.move(
@@ -776,7 +843,7 @@ async function performDrag(
     } catch (e) {
 
         console.error(
-            `[${accountName}] ❌ خطأ في السحب:`,
+            `[${accountName}] ❌ Drag error:`,
             e.message
         );
     }
@@ -830,11 +897,15 @@ async function main() {
         } catch (e) {}
 
         if (tempDir1) {
-            deleteTempDir(tempDir1);
+            deleteTempDir(
+                tempDir1
+            );
         }
 
         if (tempDir2) {
-            deleteTempDir(tempDir2);
+            deleteTempDir(
+                tempDir2
+            );
         }
     };
 
@@ -862,6 +933,10 @@ async function main() {
         }
     );
 
+    // ========================================================
+    // START
+    // ========================================================
+
     try {
 
         console.log(
@@ -873,26 +948,32 @@ async function main() {
         );
 
         console.log(
+            `👥 Group: ${GROUP_ID}`
+        );
+
+        console.log(
             "========================================"
         );
 
         // ====================================================
-        // مجلدات المتصفحات
+        // Temporary profiles
         // ====================================================
 
-        tempDir1 = fs.mkdtempSync(
-            path.join(
-                os.tmpdir(),
-                "puppeteer-host-"
-            )
-        );
+        tempDir1 =
+            fs.mkdtempSync(
+                path.join(
+                    os.tmpdir(),
+                    "puppeteer-host-"
+                )
+            );
 
-        tempDir2 = fs.mkdtempSync(
-            path.join(
-                os.tmpdir(),
-                "puppeteer-guest-"
-            )
-        );
+        tempDir2 =
+            fs.mkdtempSync(
+                path.join(
+                    os.tmpdir(),
+                    "puppeteer-guest-"
+                )
+            );
 
         console.log(
             `📁 Host profile: ${tempDir1}`
@@ -903,66 +984,68 @@ async function main() {
         );
 
         // ====================================================
-        // Browser 1
+        // Browser Host
         // ====================================================
 
         console.log(
-            "🚀 فتح متصفح الحساب المنشئ..."
+            "🚀 فتح متصفح المنشئ..."
         );
 
-        browser1 = await puppeteer.launch({
+        browser1 =
+            await puppeteer.launch({
 
-            headless: "new",
+                headless: "new",
 
-            userDataDir:
-                tempDir1,
+                userDataDir:
+                    tempDir1,
 
-            args: [
+                args: [
 
-                "--disable-web-security",
+                    "--disable-web-security",
 
-                "--no-sandbox",
+                    "--no-sandbox",
 
-                "--disable-setuid-sandbox",
+                    "--disable-setuid-sandbox",
 
-                "--window-size=600,600",
+                    "--window-size=600,600",
 
-                "--disable-session-crashed-bubble",
+                    "--disable-session-crashed-bubble",
 
-                "--disable-features=TranslateUI"
-            ]
-        });
+                    "--disable-features=TranslateUI"
+                ]
+            });
 
         // ====================================================
-        // Browser 2
+        // Browser Guest
         // ====================================================
 
         console.log(
-            "🚀 فتح متصفح الحساب الضيف..."
+            "🚀 فتح متصفح الضيف..."
         );
 
-        browser2 = await puppeteer.launch({
+        browser2 =
+            await puppeteer.launch({
 
-            headless: "new",
+                headless: "new",
 
-            userDataDir:
-                tempDir2,
+                userDataDir:
+                    tempDir2,
 
-            args: [
+                args: [
 
-                "--disable-web-security",
+                    "--disable-web-security",
 
-                "--no-sandbox",
+                    "--no-sandbox",
 
-                "--disable-setuid-sandbox",
+                    "--disable-setuid-sandbox",
 
-                "--window-size=600,600",
+                    "--window-size=600,600",
 
-                "--disable-session-crashed-bubble",
+                    "--disable-session-crashed-bubble",
 
-                "--disable-features=TranslateUI"
-            ]
-        });
+                    "--disable-features=TranslateUI"
+                ]
+            });
 
         // ====================================================
         // Loop
@@ -979,7 +1062,7 @@ async function main() {
             );
 
             // ==================================================
-            // 1. Host Session
+            // 1. إنشاء Session للمنشئ
             // ==================================================
 
             const sessionHost =
@@ -991,7 +1074,7 @@ async function main() {
             if (!sessionHost) {
 
                 console.log(
-                    `❌ فشل جلسة المنشئ، انتظار ${RETRY_WAIT} ثانية...`
+                    `⏳ انتظار ${RETRY_WAIT} ثانية...`
                 );
 
                 await sleep(
@@ -1002,7 +1085,7 @@ async function main() {
             }
 
             // ==================================================
-            // 2. Guest Session
+            // 2. إنشاء Session للضيف
             // ==================================================
 
             const sessionGuest =
@@ -1013,14 +1096,14 @@ async function main() {
 
             if (!sessionGuest) {
 
-                console.log(
-                    `❌ فشل جلسة الضيف، انتظار ${RETRY_WAIT} ثانية...`
-                );
-
                 await deleteSession(
                     TOKEN_HOST,
                     sessionHost,
                     "الحساب المنشئ"
+                );
+
+                console.log(
+                    `⏳ انتظار ${RETRY_WAIT} ثانية...`
                 );
 
                 await sleep(
@@ -1054,18 +1137,20 @@ async function main() {
 
                 if (!lobbyId) {
 
-                    console.log(
-                        `⚠️ المحاولة ${attempts}/${MAX_LOBBY_ATTEMPTS} فشلت`
+                    await sleep(
+                        2000
                     );
-
-                    await sleep(2000);
                 }
             }
+
+            // ==================================================
+            // فشل إنشاء Lobby
+            // ==================================================
 
             if (!lobbyId) {
 
                 console.log(
-                    `❌ فشل إنشاء اللوبي بعد ${MAX_LOBBY_ATTEMPTS} محاولة`
+                    "❌ لم يتم إنشاء Lobby"
                 );
 
                 await deleteSession(
@@ -1099,10 +1184,6 @@ async function main() {
 
             if (!joined) {
 
-                console.log(
-                    "❌ فشل انضمام الضيف"
-                );
-
                 await deleteSession(
                     TOKEN_HOST,
                     sessionHost,
@@ -1134,10 +1215,6 @@ async function main() {
 
             if (!started) {
 
-                console.log(
-                    "❌ فشل بدء اللوبي"
-                );
-
                 await deleteSession(
                     TOKEN_HOST,
                     sessionHost,
@@ -1158,7 +1235,7 @@ async function main() {
             }
 
             // ==================================================
-            // 6. فتح الصفحات
+            // 6. فتح صفحات اللعبة
             // ==================================================
 
             const page1 =
@@ -1178,7 +1255,7 @@ async function main() {
             });
 
             // ==================================================
-            // 7. فتح Golden Goal 4.8.14
+            // 7. فتح 4.8.14
             // ==================================================
 
             await Promise.all([
@@ -1199,21 +1276,23 @@ async function main() {
             ]);
 
             // ==================================================
-            // 8. انتظار تحميل Unity
+            // 8. انتظار Unity
             // ==================================================
 
             console.log(
-                "⏳ انتظار 5 ثوانٍ قبل setUserData..."
+                "⏳ انتظار 5 ثوانٍ..."
             );
 
-            await sleep(5000);
+            await sleep(
+                5000
+            );
 
             // ==================================================
-            // 9. حقن الحسابات
+            // 9. setUserData
             // ==================================================
 
             console.log(
-                "📤 حقن setUserData في الإصدار 4.8.14..."
+                "📤 حقن الحسابات..."
             );
 
             await Promise.all([
@@ -1243,14 +1322,16 @@ async function main() {
                 "⏳ انتظار 3 ثوانٍ..."
             );
 
-            await sleep(3000);
+            await sleep(
+                3000
+            );
 
             // ==================================================
             // 11. Drag Loop
             // ==================================================
 
             console.log(
-                `🔄 بدء السحب كل ${DRAG_INTERVAL / 1000} ثانية لمدة ${WAIT_TIME} ثانية...`
+                `🔄 السحب كل ${DRAG_INTERVAL / 1000} ثوانٍ لمدة ${WAIT_TIME} ثانية`
             );
 
             stopDragging = false;
@@ -1279,7 +1360,7 @@ async function main() {
             );
 
             // ==================================================
-            // 12. Stop Drag
+            // 12. إيقاف السحب
             // ==================================================
 
             stopDragging = true;
@@ -1298,7 +1379,7 @@ async function main() {
             );
 
             // ==================================================
-            // 13. إغلاق الصفحات
+            // 13. إغلاق صفحات اللعبة
             // ==================================================
 
             try {
@@ -1314,7 +1395,7 @@ async function main() {
             );
 
             // ==================================================
-            // 14. حذف Sessions
+            // 14. إنهاء Sessions
             // ==================================================
 
             await deleteSession(
@@ -1330,14 +1411,16 @@ async function main() {
             );
 
             console.log(
-                "✅ تم إنهاء جلسات الدورة"
+                "✅ انتهت الدورة"
             );
 
             // ==================================================
-            // 15. انتظار قبل الدورة التالية
+            // 15. انتظار
             // ==================================================
 
-            await sleep(3000);
+            await sleep(
+                3000
+            );
         }
 
     } catch (e) {
