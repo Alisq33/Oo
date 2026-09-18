@@ -16,13 +16,13 @@ const MAX_LOBBY_ATTEMPTS = 25; // عدد محاولات إنشاء اللوبي
 const RETRY_WAIT = 90;         // انتظار 90 ثانية بعد الفشل
 
 // ===== إحداثيات السحب =====
-// 🟢 الحساب الضيف (الثاني): من يمين-أعلى إلى يسار-أسفل
+// 🟢 الحساب الضيف (الثاني): من (300,338) إلى (264,470)
 const GUEST_DRAG_FROM = { x: 300, y: 338 };
 const GUEST_DRAG_TO   = { x: 264, y: 470 };
 
-// 🔵 الحساب المنشئ (الأول): الاتجاه المعاكس تماماً
-const HOST_DRAG_FROM  = { x: 264, y: 470 };
-const HOST_DRAG_TO    = { x: 300, y: 338 };
+// 🔵 الحساب المنشئ (الأول): من (300,338) إلى (264,500)
+const HOST_DRAG_FROM  = { x: 300, y: 338 };
+const HOST_DRAG_TO    = { x: 264, y: 500 };
 
 // ===== رؤوس HTTP المحدثة للإصدار 4.8.14 =====
 const baseHeaders = {
@@ -415,14 +415,14 @@ async function main() {
             console.log("⏳ انتظار 3 ثوانٍ بعد الحقن...");
             await sleep(3000);
 
-            // 8. بدء السحب المتعاكس للحسابين
+            // 8. بدء السحب للحسابين
             console.log(`🔄 بدء السحب للحسابين كل ${DRAG_INTERVAL/1000} ثوانٍ لمدة ${WAIT_TIME} ثانية...`);
             console.log(`   🟢 الضيف:  (${GUEST_DRAG_FROM.x},${GUEST_DRAG_FROM.y}) → (${GUEST_DRAG_TO.x},${GUEST_DRAG_TO.y})`);
             console.log(`   🔵 المنشئ: (${HOST_DRAG_FROM.x},${HOST_DRAG_FROM.y}) → (${HOST_DRAG_TO.x},${HOST_DRAG_TO.y})`);
 
             stopDragging = false;
 
-            // سحب الحساب الضيف (الأول في التنفيذ)
+            // سحب الحساب الضيف
             dragIntervalGuest = setInterval(async () => {
                 if (stopDragging) return;
                 await performDrag(
