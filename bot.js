@@ -22,7 +22,7 @@ const GUEST_DRAG_TO   = { x: 264, y: 470 };
 
 // 🔵 الحساب المنشئ (الأول): من (300,338) إلى (264,500)
 const HOST_DRAG_FROM  = { x: 300, y: 338 };
-const HOST_DRAG_TO    = { x: 264, y: 500 };
+const HOST_DRAG_TO    = { x: 264, y: 300 };
 
 // ===== رؤوس HTTP المحدثة للإصدار 4.8.14 =====
 const baseHeaders = {
